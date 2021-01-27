@@ -1,6 +1,7 @@
 from aiida import orm
 from aiida.common import AttributeDict
 from aiida.engine import WorkChain, ToContext
+from aiida.orm.nodes.data.upf import get_pseudos_from_structure
 from aiida.plugins import WorkflowFactory
 
 from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import seekpath_structure_analysis
@@ -26,8 +27,7 @@ class Wannier90BandsWorkChain(WorkChain):
         spec.input(
             'code.pw2wannier90',
             valid_type=orm.Code,
-            help=
-            'The `pw2wannier90.x` code to use for the `Pw2WannierCalculations`.'
+            help='The `pw2wannier90.x` code to use for the `Pw2WannierCalculations`.'
         )
         spec.input(
             'code.wannier90',
@@ -56,8 +56,7 @@ class Wannier90BandsWorkChain(WorkChain):
             'controls.auto_projections',
             valid_type=orm.Bool,
             default=lambda: orm.Bool(True),
-            help=
-            'Whether using SCDM to automatically construct Wannier functions or not.'
+            help='Whether using SCDM to automatically construct Wannier functions or not.'
         )
         spec.input(
             'controls.only_valence',
@@ -81,8 +80,7 @@ class Wannier90BandsWorkChain(WorkChain):
             'controls.do_disentanglement',
             valid_type=orm.Bool,
             default=lambda: orm.Bool(False),
-            help=
-            'Used only if only_valence == False. Usually disentanglement worsens SCDM bands, keep it default to False.'
+            help='Used only if only_valence == False. Usually disentanglement worsens SCDM bands, keep it default to False.'
         )
         spec.input(
             'controls.do_mlwf',
@@ -96,20 +94,27 @@ class Wannier90BandsWorkChain(WorkChain):
             default=lambda: orm.Float(0.01),
             help='Kpoint mesh density of the resulting band structure.'
         )
+        spec.input('options', required=False,
+                   valid_type=orm.Dict, help='Meta options.')
         # spec.input('controls.nbands_factor', valid_type=orm.Float, default=orm.Float(1.5),
         # help='The number of bands for the NSCF calculation is that used for the SCF multiplied by this factor.')
+        # MODIFIED
+        spec.input('pseudo_family', valid_type=orm.Str, required=False,
+                   help='[Deprecated: use `pw.pseudos` instead] An alternative to specifying the pseudo potentials manually in'
+                   ' `pseudos`: one can specify the name of an existing pseudo potential family and the work chain will '
+                   'generate the pseudos automatically based on the input structure.')
+        spec.input('set_2d_mesh', valid_type=orm.Bool, default=lambda: orm.Bool(
+            False), help='Set the mesh to [x,x,1]')
 
         spec.output(
             'primitive_structure',
             valid_type=orm.StructureData,
-            help=
-            'The normalized and primitivized structure for which the calculations are computed.'
+            help='The normalized and primitivized structure for which the calculations are computed.'
         )
         spec.output(
             'seekpath_parameters',
             valid_type=orm.Dict,
-            help=
-            'The parameters used in the SeeKpath call to normalize the input or relaxed structure.'
+            help='The parameters used in the SeeKpath call to normalize the input or relaxed structure.'
         )
         spec.output(
             'scf_parameters',
@@ -221,9 +226,10 @@ class Wannier90BandsWorkChain(WorkChain):
             'kpoints_distance_for_bands',
             orm.Float(self.ctx.protocol['kpoints_distance_for_bands'])
         )
-        seekpath_parameters = orm.Dict(
-            dict={'reference_distance': kpoints_distance_for_bands}
-        )
+        seekpath_parameters = {
+            'reference_distance': kpoints_distance_for_bands,
+            'metadata': {'call_link_label': 'seekpath'}
+        }
         structure_formula = self.inputs.structure.get_formula()
         self.report(
             'running seekpath to get primitive structure for: {}'.
@@ -385,7 +391,7 @@ class Wannier90BandsWorkChain(WorkChain):
     def setup_pw2wannier90_parameters(self):
 
         parameters = {}
-        #Write UNK files (to plot WFs)
+        # Write UNK files (to plot WFs)
         if self.inputs.controls.plot_wannier_functions:
             parameters['write_unk'] = True
             self.report("UNK files will be written.")
@@ -423,7 +429,7 @@ class Wannier90BandsWorkChain(WorkChain):
         # TODO exclude_bands
         # if exclude_bands is not None:
         #     wannier90_params_dict['exclude_bands'] = exclude_bands
-        #'exclude_bands': range(5,13),
+        # 'exclude_bands': range(5,13),
 
         if self.inputs.controls.only_valence:
             parameters['dis_num_iter'] = 0
@@ -432,9 +438,9 @@ class Wannier90BandsWorkChain(WorkChain):
                 parameters.update({
                     'dis_num_iter': 200,
                     'dis_conv_tol': parameters['conv_tol'],
-                    'dis_froz_max': 1.0,  #TODO a better value??
-                    #'dis_mix_ratio':1.d0,
-                    #'dis_win_max':10.0,
+                    'dis_froz_max': 1.0,  # TODO a better value??
+                    # 'dis_mix_ratio':1.d0,
+                    # 'dis_win_max':10.0,
                 })
             else:
                 parameters.update({'dis_num_iter': 0})
@@ -481,15 +487,21 @@ class Wannier90BandsWorkChain(WorkChain):
             'pw': {
                 'code':
                 self.inputs.code.pw,
-                'pseudos':
-                get_pseudos_from_dict(
-                    self.ctx.current_structure, known_pseudos
-                ),
                 'parameters':
                 self.ctx.scf_parameters,
                 'metadata': {},
             }
         })
+
+        if 'pseudo_family' in self.inputs:
+            inputs.pw['pseudos'] = get_pseudos_from_structure(
+                self.inputs.structure, self.inputs.pseudo_family.value)
+        else:
+            inputs.pw['pseudos'] = get_pseudos_from_dict(
+                self.inputs.structure, known_pseudos)
+
+        if 'set_2d_mesh' in self.inputs:
+            inputs['set_2d_mesh'] = self.inputs.set_2d_mesh
 
         if 'options' in self.inputs:
             inputs.pw.metadata.options = self.inputs.options.get_dict()
@@ -584,7 +596,7 @@ class Wannier90BandsWorkChain(WorkChain):
             orm.Dict(dict=self.ctx.kpoints_path)
         })
 
-        #TODO ramdom_projections
+        # TODO ramdom_projections
         # if self.ctx.random_projections:
         #     if settings is not None:
         #         settings['random_projections'] = True
@@ -708,7 +720,7 @@ class Wannier90BandsWorkChain(WorkChain):
     def get_default_options(self, with_mpi=False):
         """Increase wallclock to 5 hour, use mpi, set number of machines according to 
         number of atoms.
-        
+
         :param with_mpi: [description], defaults to False
         :type with_mpi: bool, optional
         :return: [description]
@@ -728,7 +740,7 @@ def estimate_num_machines(structure):
     """
      1 <= num_atoms <= 10 -> 1 machine
     11 <= num_atoms <= 20 -> 2 machine
-    
+
     :param structure: [description]
     :type structure: [type]
     :return: [description]
@@ -775,7 +787,7 @@ def get_manual_options():
     return {
         'resources': {
             'num_machines': 1,
-            'num_mpiprocs_per_machine': 8,
+            'num_mpiprocs_per_machine': 1,
             # 'tot_num_mpiprocs': ,
             # 'num_cores_per_machine': ,
             # 'num_cores_per_mpiproc': ,

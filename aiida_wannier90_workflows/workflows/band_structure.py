@@ -4,6 +4,7 @@ This is a copy of the one included in aiida_quantumespresso, the diff is that th
 from aiida import orm
 from aiida.common import AttributeDict
 from aiida.engine import WorkChain, ToContext
+from aiida.orm.nodes.data.upf import get_pseudos_from_structure
 from aiida.plugins import WorkflowFactory
 
 from aiida_quantumespresso.utils.protocols.pw import ProtocolManager
@@ -33,13 +34,20 @@ class PwBandStructureWorkChain(WorkChain):
         # yapf: disable
         super(PwBandStructureWorkChain, cls).define(spec)
         spec.input('code', valid_type=orm.Code,
-            help='The `pw.x` code to use for the `PwCalculations`.')
+                   help='The `pw.x` code to use for the `PwCalculations`.')
         spec.input('structure', valid_type=orm.StructureData,
-            help='The input structure.')
+                   help='The input structure.')
         spec.input('options', valid_type=orm.Dict, required=False,
-            help='Optional `options` to use for the `PwCalculations`.')
+                   help='Optional `options` to use for the `PwCalculations`.')
         spec.input('protocol', valid_type=orm.Dict, default=lambda: orm.Dict(dict={'name': 'theos-ht-1.0'}),
-            help='The protocol to use for the workchain.', validator=validate_protocol)
+                   help='The protocol to use for the workchain.', validator=validate_protocol)
+        # MODIFIED
+        spec.input('pseudo_family', valid_type=orm.Str, required=False,
+                   help='[Deprecated: use `pw.pseudos` instead] An alternative to specifying the pseudo potentials manually in'
+                   ' `pseudos`: one can specify the name of an existing pseudo potential family and the work chain will '
+                   'generate the pseudos automatically based on the input structure.')
+        spec.input('set_2d_mesh', valid_type=orm.Bool, default=lambda: orm.Bool(
+            False), help='Set the mesh to [x,x,1]')
         spec.expose_outputs(PwBandsWorkChain)
         spec.outline(
             cls.setup_protocol,
@@ -48,9 +56,9 @@ class PwBandStructureWorkChain(WorkChain):
             cls.results,
         )
         spec.exit_code(201, 'ERROR_INVALID_INPUT_UNRECOGNIZED_KIND',
-            message='Input `StructureData` contains an unsupported kind.')
+                       message='Input `StructureData` contains an unsupported kind.')
         spec.exit_code(401, 'ERROR_SUB_PROCESS_FAILED_BANDS',
-            message='The `PwBandsWorkChain` sub process failed.')
+                       message='The `PwBandsWorkChain` sub process failed.')
         spec.output('primitive_structure', valid_type=orm.StructureData)
         spec.output('seekpath_parameters', valid_type=orm.Dict)
         spec.output('scf_parameters', valid_type=orm.Dict)
@@ -73,8 +81,10 @@ class PwBandStructureWorkChain(WorkChain):
         Based on the specified protocol, we define values for variables that affect the execution of the calculations.
         """
         protocol, protocol_modifiers = self._get_protocol()
-        self.report('running the workchain with the "{}" protocol'.format(protocol.name))
-        self.ctx.protocol = protocol.get_protocol_data(modifiers=protocol_modifiers)
+        self.report(
+            'running the workchain with the "{}" protocol'.format(protocol.name))
+        self.ctx.protocol = protocol.get_protocol_data(
+            modifiers=protocol_modifiers)
 
     def setup_parameters(self):
         """Set up the default input parameters required for the `PwBandsWorkChain`."""
@@ -89,7 +99,8 @@ class PwBandStructureWorkChain(WorkChain):
                 ecutwfc.append(cutoff)
                 ecutrho.append(cutrho)
             except KeyError:
-                self.report('failed to retrieve the cutoff or dual factor for {}'.format(kind))
+                self.report(
+                    'failed to retrieve the cutoff or dual factor for {}'.format(kind))
                 return self.exit_codes.ERROR_INVALID_INPUT_UNRECOGNIZED_KIND
 
         self.ctx.parameters = orm.Dict(dict={
@@ -123,11 +134,20 @@ class PwBandStructureWorkChain(WorkChain):
             inputs = AttributeDict({
                 'pw': {
                     'code': self.inputs.code,
-                    'pseudos': get_pseudos_from_dict(self.inputs.structure, known_pseudos),
                     'parameters': self.ctx.parameters,
                     'metadata': {},
                 }
             })
+
+            if 'pseudo_family' in self.inputs:
+                inputs.pw['pseudos'] = get_pseudos_from_structure(
+                    self.inputs.structure, self.inputs.pseudo_family.value)
+            else:
+                inputs.pw['pseudos'] = get_pseudos_from_dict(
+                    self.inputs.structure, known_pseudos)
+
+            if 'set_2d_mesh' in self.inputs:
+                inputs['set_2d_mesh'] = self.inputs.set_2d_mesh
 
             if 'options' in self.inputs:
                 inputs.pw.metadata.options = self.inputs.options.get_dict()
@@ -149,8 +169,10 @@ class PwBandStructureWorkChain(WorkChain):
         })
 
         # inputs.relax.base.kpoints_distance = orm.Float(self.ctx.protocol['kpoints_mesh_density'])
-        inputs.scf.kpoints_distance = orm.Float(self.ctx.protocol['kpoints_mesh_density'])
-        inputs.bands.kpoints_distance = orm.Float(self.ctx.protocol['kpoints_distance_for_bands'])
+        inputs.scf.kpoints_distance = orm.Float(
+            self.ctx.protocol['kpoints_mesh_density'])
+        inputs.bands.kpoints_distance = orm.Float(
+            self.ctx.protocol['kpoints_distance_for_bands'])
 
         num_bands_factor = self.ctx.protocol.get('num_bands_factor', None)
         if num_bands_factor is not None:
@@ -167,7 +189,8 @@ class PwBandStructureWorkChain(WorkChain):
         workchain = self.ctx.workchain_bands
 
         if not self.ctx.workchain_bands.is_finished_ok:
-            self.report('sub process PwBandsWorkChain<{}> failed'.format(workchain.pk))
+            self.report(
+                'sub process PwBandsWorkChain<{}> failed'.format(workchain.pk))
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_BANDS
 
         self.report('workchain successfully completed')
