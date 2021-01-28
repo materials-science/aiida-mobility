@@ -4,7 +4,8 @@ from aiida.engine.processes import WorkChain, ToContext, if_
 from aiida.engine.processes import calcfunction
 from aiida.plugins import WorkflowFactory, CalculationFactory
 from aiida_quantumespresso.utils.mapping import prepare_process_inputs
-from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
+# from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
+from aiida_wannier90_workflows.workflows.pw.base import PwBaseWorkChain
 from aiida_quantumespresso.workflows.pw.relax import PwRelaxWorkChain
 from aiida_quantumespresso.calculations.projwfc import ProjwfcCalculation
 from aiida_quantumespresso.calculations.pw2wannier90 import Pw2wannier90Calculation
@@ -40,8 +41,7 @@ class Wannier90WorkChain(WorkChain):
             'clean_workdir',
             valid_type=orm.Bool,
             default=lambda: orm.Bool(False),
-            help=
-            'If `True`, work directories of all called calculation will be cleaned at the end of execution.'
+            help='If `True`, work directories of all called calculation will be cleaned at the end of execution.'
         )
         spec.input(
             'only_valence',
@@ -53,8 +53,7 @@ class Wannier90WorkChain(WorkChain):
             'wannier_energies_relative_to_fermi',
             valid_type=orm.Bool,
             default=lambda: orm.Bool(False),
-            help=
-            'determines if the energies(dis_froz_min/max, dis_win_min/max) defined in the input parameters '
+            help='determines if the energies(dis_froz_min/max, dis_win_min/max) defined in the input parameters '
             + 'are relative to scf Fermi energy or not.'
         )
         spec.input(
@@ -513,7 +512,7 @@ class Wannier90WorkChain(WorkChain):
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90PP
 
-        #Check if settings is given in input
+        # Check if settings is given in input
         try:
             settings = inputs['settings'].get_dict()
         except KeyError:

@@ -11,7 +11,8 @@ from aiida_quantumespresso.utils.protocols.pw import ProtocolManager
 from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
 from aiida_quantumespresso.utils.resources import get_default_options
 
-PwBandsWorkChain = WorkflowFactory('quantumespresso.pw.bands')
+from aiida_wannier90_workflows.workflows.pw.bands import PwBandsWorkChain
+# PwBandsWorkChain = WorkflowFactory('quantumespresso.pw.bands')
 
 
 def validate_protocol(protocol_dict):
@@ -24,6 +25,14 @@ def validate_protocol(protocol_dict):
         ProtocolManager(protocol_name)
     except ValueError as exception:
         return str(exception)
+
+
+def validate_cutoffs(cutoffs_dict, ctx):
+    try:
+        cutoff = cutoffs_dict['cutoff']
+        dual = cutoffs_dict['dual']
+    except KeyError as exception:
+        return 'Missing key `cutoff` or `dual` in cutoffs dictionary'
 
 
 class PwBandStructureWorkChain(WorkChain):
@@ -48,6 +57,13 @@ class PwBandStructureWorkChain(WorkChain):
                    'generate the pseudos automatically based on the input structure.')
         spec.input('set_2d_mesh', valid_type=orm.Bool, default=lambda: orm.Bool(
             False), help='Set the mesh to [x,x,1]')
+        spec.input(
+            'cutoffs',
+            valid_type=orm.Dict,
+            required=False,
+            help='Recommended cutoffs. e.g. {"cutoff": 30, "dual": 4.9}',
+            validator=validate_cutoffs
+        )
         spec.expose_outputs(PwBandsWorkChain)
         spec.outline(
             cls.setup_protocol,
@@ -91,17 +107,23 @@ class PwBandStructureWorkChain(WorkChain):
         ecutwfc = []
         ecutrho = []
 
-        for kind in self.inputs.structure.get_kind_names():
-            try:
-                dual = self.ctx.protocol['pseudo_data'][kind]['dual']
-                cutoff = self.ctx.protocol['pseudo_data'][kind]['cutoff']
-                cutrho = dual * cutoff
-                ecutwfc.append(cutoff)
-                ecutrho.append(cutrho)
-            except KeyError:
-                self.report(
-                    'failed to retrieve the cutoff or dual factor for {}'.format(kind))
-                return self.exit_codes.ERROR_INVALID_INPUT_UNRECOGNIZED_KIND
+        if 'cutoffs' in self.inputs:
+            cutoff = self.inputs.cutoffs['cutoff']
+            dual = self.inputs.cutoffs['dual']
+            ecutwfc.append(cutoff)
+            ecutrho.append(dual * cutoff)
+        else:
+            for kind in self.inputs.structure.get_kind_names():
+                try:
+                    dual = self.ctx.protocol['pseudo_data'][kind]['dual']
+                    cutoff = self.ctx.protocol['pseudo_data'][kind]['cutoff']
+                    cutrho = dual * cutoff
+                    ecutwfc.append(cutoff)
+                    ecutrho.append(cutrho)
+                except KeyError:
+                    self.report(
+                        'failed to retrieve the cutoff or dual factor for {}'.format(kind))
+                    return self.exit_codes.ERROR_INVALID_INPUT_UNRECOGNIZED_KIND
 
         self.ctx.parameters = orm.Dict(dict={
             'CONTROL': {

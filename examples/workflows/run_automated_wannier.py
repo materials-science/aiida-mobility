@@ -1,11 +1,12 @@
 #!/usr/bin/env runaiida
 import argparse
+import os
 from aiida import orm
 from aiida.engine import submit
 from aiida.common.exceptions import NotExistent
 from aiida.engine.processes.workchains import workchain
 from ase.io import read as aseread
-from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain
+from aiida_wannier90_workflows.workflows.wannier.bands import Wannier90BandsWorkChain
 
 # Please modify these according to your machine
 str_pw = 'qe-6.5-pw'
@@ -38,6 +39,7 @@ def parse_arugments():
     parser = argparse.ArgumentParser(
         description="A script to run the AiiDA workflows to automatically compute the MLWF using the SCDM method and the automated protocol described in the Vitale et al. paper"
     )
+    group = parser.add_mutually_exclusive_group(required=True)
     parser.add_argument(
         '-S',
         '--structure', metavar="FILENAME", help="path to an input Structure(xsf,cif,poscar) file"
@@ -53,10 +55,15 @@ def parse_arugments():
         help="available protocols are 'theos-ht-1.0' and 'testing'",
         default="theos-ht-1.0"
     )
+    group.add_argument("--pseudos", help="pseudos json data of structures")
+    group.add_argument("--pseudo-family", help="pseudo family name")
+    parser.add_argument('--cutoffs', type=float, nargs=2, default=None,
+                        help='should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc')
     parser.add_argument(
-        "--pseudo-family",
-        help="pseudo family name",
-        default=None
+        "--set_2d_mesh",
+        default=False,
+        action='store_true',
+        help="Set mesh to [x, x, 1]",
     )
     parser.add_argument(
         '-m',
@@ -103,12 +110,6 @@ def parse_arugments():
         default='qe'
     )
     parser.add_argument(
-        "--set_2d_mesh",
-        default=False,
-        action='store_true',
-        help="Set mesh to [x, x, 1]",
-    )
-    parser.add_argument(
         "-D",
         "--daemon",
         default=False,
@@ -122,6 +123,8 @@ def parse_arugments():
         default='scdm_workflow'
     )
     args = parser.parse_args()
+    if args.cutoffs is not None and args.pseudos is not None:
+        print('[Warning]: cutoffs will replace the cutoffs in pseudos data.')
     return args
 
 
@@ -186,7 +189,22 @@ def print_help(workchain, structure):
         f.write('verdi process report {}'.format(workchain.pk))
 
 
-def submit_workchain(structure_file, num_machines, num_mpiprocs_per_machine, protocol, parameters, pseudo_family, only_valence, do_disentanglement, do_mlwf, retrieve_hamiltonian, group_name, daemon, set_2d_mesh):
+def submit_workchain(
+        structure_file,
+        num_machines,
+        num_mpiprocs_per_machine,
+        protocol,
+        parameters,
+        pseudo_family,
+        pseudos,
+        only_valence,
+        do_disentanglement,
+        do_mlwf,
+        retrieve_hamiltonian,
+        group_name,
+        daemon,
+        set_2d_mesh,
+        cutoffs):
     codes = check_codes()
 
     group_name = update_group_name(
@@ -221,10 +239,44 @@ def submit_workchain(structure_file, num_machines, num_mpiprocs_per_machine, pro
     modifiers = {
         'parameters': parameters
     }
-    # if pseudo_family is not None:
-    # from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_structure
-    # pseudo_data = get_pseudos_from_structure(structure, pseudo_family)
-    # modifiers.update({'pseudo': pseudo_family})
+    recommended_cutoffs = None
+    if pseudos is not None:
+        from aiida_quantumespresso.utils.protocols.pw import _load_pseudo_metadata
+        pseudo_json_data = _load_pseudo_metadata(pseudos)
+        structure_name = os.path.splitext(structure_file)[0]
+        if structure_name in pseudo_json_data:
+            pseudo_dict = pseudo_json_data[structure_name]
+            if 'pseudo_family' in pseudo_dict:
+                pseudo_family = pseudo_dict['pseudo_family']
+                recommended_cutoffs = {
+                    'cutoff': pseudo_dict['cutoff'],
+                    'dual': pseudo_dict['dual'],
+                }
+            elif 'pseudos' in pseudo_dict:
+                pseudo_data = {}
+                pseudo_map = pseudo_dict['pseudos']
+                for ele in pseudo_map:
+                    pseudo_data[ele] = pseudo_map[ele]
+                    pseudo_data[ele].update({
+                        'cutoff': pseudo_dict['cutoff'],
+                        'dual': pseudo_dict['dual'],
+                    })
+                modifiers.update(
+                    {'pseudo': 'custom', 'pseudo_data': pseudo_data})
+            else:
+                print(
+                    'neither pseudo_family or pseudos is provided in json data'
+                )
+                exit(1)
+        else:
+            print('No structure found in json data. Please check your filename.')
+            exit(1)
+
+    if cutoffs is not None and len(cutoffs) == 2:
+        recommended_cutoffs = {
+            'cutoff': cutoffs[0],
+            'dual': cutoffs[1]
+        }
 
     wannier90_workchain_parameters = {
         "code": {
@@ -250,6 +302,9 @@ def submit_workchain(structure_file, num_machines, num_mpiprocs_per_machine, pro
     if pseudo_family is not None:
         wannier90_workchain_parameters['pseudo_family'] = orm.Str(
             pseudo_family)
+    if recommended_cutoffs is not None:
+        wannier90_workchain_parameters['cutoffs'] = orm.Dict(
+            dict=recommended_cutoffs)
 
     if daemon is not None:
         workchain = submit(
@@ -272,7 +327,21 @@ if __name__ == "__main__":
     str_pw2wan += '@{}'.format(args.computer)
     str_projwfc += '@{}'.format(args.computer)
     str_wan += '@{}'.format(args.computer)
+
     submit_workchain(
-        args.structure, args.num_machines, args.num_mpiprocs_per_machine, args.protocol, args.parameters, args.pseudo_family, args.only_valence, args.do_disentanglement,
-        args.do_mlwf, args.retrieve_hamiltonian, args.group_name, args.daemon, args.set_2d_mesh
+        args.structure,
+        args.num_machines,
+        args.num_mpiprocs_per_machine,
+        args.protocol,
+        args.parameters,
+        args.pseudo_family,
+        args.pseudos,
+        args.only_valence,
+        args.do_disentanglement,
+        args.do_mlwf,
+        args.retrieve_hamiltonian,
+        args.group_name,
+        args.daemon,
+        args.set_2d_mesh,
+        args.cutoffs
     )

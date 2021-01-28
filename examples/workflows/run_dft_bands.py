@@ -3,7 +3,8 @@ import argparse
 from aiida import orm
 from aiida.engine import submit, run_get_node
 from ase.io import read as aseread
-from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain, PwBandStructureWorkChain
+from aiida_wannier90_workflows.workflows.pw.band_structure import PwBandStructureWorkChain
+from aiida_wannier90_workflows.workflows.wannier.bands import Wannier90BandsWorkChain
 
 # Please modify these according to your machine
 code_str = 'qe-6.5-pw'

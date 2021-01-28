@@ -172,6 +172,7 @@ def plot_bands_json(wannier, pw_bands):
 
     for i in range(len(p_y)):
         ax.plot(p_x, p_y[i], color='k', linestyle=':', linewidth=1)
+    for i in range(len(p_y)):
         ax.plot(w_x, w_y[i], linewidth=0.5)
 
     ax.set_xticks(labels_x)
