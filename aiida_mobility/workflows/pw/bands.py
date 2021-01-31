@@ -5,12 +5,15 @@ from aiida.common import AttributeDict
 from aiida.plugins import WorkflowFactory
 from aiida.engine import WorkChain, ToContext, if_
 
-from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import seekpath_structure_analysis
+from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import (
+    seekpath_structure_analysis,
+)
 from aiida_quantumespresso.utils.mapping import prepare_process_inputs
 
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
-from aiida_wannier90_workflows.workflows.pw.base import PwBaseWorkChain
-from aiida_wannier90_workflows.workflows.pw.relax import PwRelaxWorkChain
+from aiida_mobility.workflows.pw.base import PwBaseWorkChain
+from aiida_mobility.workflows.pw.relax import PwRelaxWorkChain
+
 # PwBaseWorkChain = WorkflowFactory('quantumespresso.pw.base')
 # PwRelaxWorkChain = WorkflowFactory('quantumespresso.pw.relax')
 
@@ -19,11 +22,17 @@ def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
     """Validate the inputs of the entire input namespace."""
     # pylint: disable=no-member
 
-    if 'nbands_factor' in inputs and 'nbnd' in inputs['bands']['pw']['parameters'].get_attribute('SYSTEM', {}):
-        return PwBandsWorkChain.exit_codes.ERROR_INVALID_INPUT_NUMBER_OF_BANDS.message
+    if "nbands_factor" in inputs and "nbnd" in inputs["bands"]["pw"][
+        "parameters"
+    ].get_attribute("SYSTEM", {}):
+        return (
+            PwBandsWorkChain.exit_codes.ERROR_INVALID_INPUT_NUMBER_OF_BANDS.message
+        )
 
     # Cannot specify both `bands_kpoints` and `bands_kpoints_distance`
-    if all([key in inputs for key in ['bands_kpoints', 'bands_kpoints_distance']]):
+    if all(
+        [key in inputs for key in ["bands_kpoints", "bands_kpoints_distance"]]
+    ):
         return PwBandsWorkChain.exit_codes.ERROR_INVALID_INPUT_KPOINTS.message
 
 
@@ -116,7 +125,9 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
         # yapf: enable
 
     @classmethod
-    def get_builder_from_protocol(cls, code, structure, protocol=None, overrides=None, **kwargs):
+    def get_builder_from_protocol(
+        cls, code, structure, protocol=None, overrides=None, **kwargs
+    ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
         :param code: the ``Code`` instance configured for the ``quantumespresso.pw`` plugin.
@@ -132,30 +143,34 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
         builder = cls.get_builder()
 
         relax = PwRelaxWorkChain.get_builder_from_protocol(
-            *args, overrides=inputs.get('relax', None), **kwargs)
+            *args, overrides=inputs.get("relax", None), **kwargs
+        )
         scf = PwBaseWorkChain.get_builder_from_protocol(
-            *args, overrides=inputs.get('scf', None), **kwargs)
+            *args, overrides=inputs.get("scf", None), **kwargs
+        )
         bands = PwBaseWorkChain.get_builder_from_protocol(
-            *args, overrides=inputs.get('bands', None), **kwargs)
+            *args, overrides=inputs.get("bands", None), **kwargs
+        )
 
-        relax.pop('structure', None)
-        relax.pop('clean_workdir', None)
-        relax.pop('base_final_scf', None)
-        scf['pw'].pop('structure', None)
-        scf.pop('clean_workdir', None)
-        bands['pw'].pop('structure', None)
-        bands.pop('clean_workdir', None)
-        bands.pop('kpoints_distance', None)
-        bands.pop('kpoints_force_parity', None)
+        relax.pop("structure", None)
+        relax.pop("clean_workdir", None)
+        relax.pop("base_final_scf", None)
+        scf["pw"].pop("structure", None)
+        scf.pop("clean_workdir", None)
+        bands["pw"].pop("structure", None)
+        bands.pop("clean_workdir", None)
+        bands.pop("kpoints_distance", None)
+        bands.pop("kpoints_force_parity", None)
 
         builder.structure = structure
         builder.relax = relax
         builder.scf = scf
         builder.bands = bands
-        builder.clean_workdir = orm.Bool(inputs['clean_workdir'])
-        builder.nbands_factor = orm.Float(inputs['nbands_factor'])
+        builder.clean_workdir = orm.Bool(inputs["clean_workdir"])
+        builder.nbands_factor = orm.Float(inputs["nbands_factor"])
         builder.bands_kpoints_distance = orm.Float(
-            inputs['bands_kpoints_distance'])
+            inputs["bands_kpoints_distance"]
+        )
 
         return builder
 
@@ -163,26 +178,27 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
         """Define the current structure in the context to be the input structure."""
         self.ctx.current_structure = self.inputs.structure
         self.ctx.current_number_of_bands = None
-        self.ctx.bands_kpoints = self.inputs.get('bands_kpoints', None)
+        self.ctx.bands_kpoints = self.inputs.get("bands_kpoints", None)
 
     def should_run_relax(self):
         """If the 'relax' input namespace was specified, we relax the input structure."""
-        return 'relax' in self.inputs
+        return "relax" in self.inputs
 
     def should_run_seekpath(self):
         """Seekpath should only be run if the `bands_kpoints` input is not specified."""
-        return 'bands_kpoints' not in self.inputs
+        return "bands_kpoints" not in self.inputs
 
     def run_relax(self):
         """Run the PwRelaxWorkChain to run a relax PwCalculation."""
-        inputs = AttributeDict(self.exposed_inputs(
-            PwRelaxWorkChain, namespace='relax'))
-        inputs.metadata.call_link_label = 'relax'
+        inputs = AttributeDict(
+            self.exposed_inputs(PwRelaxWorkChain, namespace="relax")
+        )
+        inputs.metadata.call_link_label = "relax"
         inputs.structure = self.ctx.current_structure
 
         running = self.submit(PwRelaxWorkChain, **inputs)
 
-        self.report(f'launching PwRelaxWorkChain<{running.pk}>')
+        self.report(f"launching PwRelaxWorkChain<{running.pk}>")
 
         return ToContext(workchain_relax=running)
 
@@ -192,12 +208,14 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
 
         if not workchain.is_finished_ok:
             self.report(
-                f'PwRelaxWorkChain failed with exit status {workchain.exit_status}')
+                f"PwRelaxWorkChain failed with exit status {workchain.exit_status}"
+            )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_RELAX
 
         self.ctx.current_structure = workchain.outputs.output_structure
-        self.ctx.current_number_of_bands = workchain.outputs.output_parameters.get_attribute(
-            'number_of_bands')
+        self.ctx.current_number_of_bands = (
+            workchain.outputs.output_parameters.get_attribute("number_of_bands")
+        )
 
     def run_seekpath(self):
         """Run the structure through SeeKpath to get the normalized structure and path along high-symmetry k-points .
@@ -205,39 +223,42 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
         This is only called if the `bands_kpoints` input was not specified.
         """
         inputs = {
-            'reference_distance': self.inputs.get('bands_kpoints_distance', None),
-            'metadata': {
-                'call_link_label': 'seekpath'
-            }
+            "reference_distance": self.inputs.get(
+                "bands_kpoints_distance", None
+            ),
+            "metadata": {"call_link_label": "seekpath"},
         }
         result = seekpath_structure_analysis(
-            self.ctx.current_structure, **inputs)
-        self.ctx.current_structure = result['primitive_structure']
-        self.ctx.bands_kpoints = result['explicit_kpoints']
+            self.ctx.current_structure, **inputs
+        )
+        self.ctx.current_structure = result["primitive_structure"]
+        self.ctx.bands_kpoints = result["explicit_kpoints"]
 
-        self.out('primitive_structure', result['primitive_structure'])
-        self.out('seekpath_parameters', result['parameters'])
+        self.out("primitive_structure", result["primitive_structure"])
+        self.out("seekpath_parameters", result["parameters"])
 
     def run_scf(self):
         """Run the PwBaseWorkChain in scf mode on the primitive cell of (optionally relaxed) input structure."""
-        inputs = AttributeDict(self.exposed_inputs(
-            PwBaseWorkChain, namespace='scf'))
-        inputs.metadata.call_link_label = 'scf'
+        inputs = AttributeDict(
+            self.exposed_inputs(PwBaseWorkChain, namespace="scf")
+        )
+        inputs.metadata.call_link_label = "scf"
         inputs.pw.structure = self.ctx.current_structure
         inputs.pw.parameters = inputs.pw.parameters.get_dict()
-        inputs.pw.parameters.setdefault('CONTROL', {})['calculation'] = 'scf'
+        inputs.pw.parameters.setdefault("CONTROL", {})["calculation"] = "scf"
 
         # Make sure to carry the number of bands from the relax workchain if it was run and it wasn't explicitly defined
         # in the inputs. One of the base workchains in the relax workchain may have changed the number automatically in
         #  the sanity checks on band occupations.
         if self.ctx.current_number_of_bands:
-            inputs.pw.parameters.setdefault('SYSTEM', {}).setdefault(
-                'nbnd', self.ctx.current_number_of_bands)
+            inputs.pw.parameters.setdefault("SYSTEM", {}).setdefault(
+                "nbnd", self.ctx.current_number_of_bands
+            )
 
         inputs = prepare_process_inputs(PwBaseWorkChain, inputs)
         running = self.submit(PwBaseWorkChain, **inputs)
 
-        self.report(f'launching PwBaseWorkChain<{running.pk}> in scf mode')
+        self.report(f"launching PwBaseWorkChain<{running.pk}> in scf mode")
 
         return ToContext(workchain_scf=running)
 
@@ -247,58 +268,65 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
 
         if not workchain.is_finished_ok:
             self.report(
-                f'scf PwBaseWorkChain failed with exit status {workchain.exit_status}')
+                f"scf PwBaseWorkChain failed with exit status {workchain.exit_status}"
+            )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_SCF
 
         self.ctx.current_folder = workchain.outputs.remote_folder
-        self.ctx.current_number_of_bands = workchain.outputs.output_parameters.get_attribute(
-            'number_of_bands')
+        self.ctx.current_number_of_bands = (
+            workchain.outputs.output_parameters.get_attribute("number_of_bands")
+        )
 
     def run_bands(self):
         """Run the PwBaseWorkChain in bands mode along the path of high-symmetry determined by seekpath."""
-        inputs = AttributeDict(self.exposed_inputs(
-            PwBaseWorkChain, namespace='bands'))
-        inputs.metadata.call_link_label = 'bands'
+        inputs = AttributeDict(
+            self.exposed_inputs(PwBaseWorkChain, namespace="bands")
+        )
+        inputs.metadata.call_link_label = "bands"
         inputs.kpoints = self.ctx.bands_kpoints
         inputs.pw.structure = self.ctx.current_structure
         inputs.pw.parent_folder = self.ctx.current_folder
         inputs.pw.parameters = inputs.pw.parameters.get_dict()
-        inputs.pw.parameters.setdefault('CONTROL', {})
-        inputs.pw.parameters.setdefault('SYSTEM', {})
-        inputs.pw.parameters.setdefault('ELECTRONS', {})
+        inputs.pw.parameters.setdefault("CONTROL", {})
+        inputs.pw.parameters.setdefault("SYSTEM", {})
+        inputs.pw.parameters.setdefault("ELECTRONS", {})
 
         # The following flags always have to be set in the parameters, regardless of what caller specified in the inputs
-        inputs.pw.parameters['CONTROL']['calculation'] = 'bands'
+        inputs.pw.parameters["CONTROL"]["calculation"] = "bands"
 
         # Only set the following parameters if not directly explicitly defined in the inputs
-        inputs.pw.parameters['ELECTRONS'].setdefault('diagonalization', 'cg')
-        inputs.pw.parameters['ELECTRONS'].setdefault('diago_full_acc', True)
+        inputs.pw.parameters["ELECTRONS"].setdefault("diagonalization", "cg")
+        inputs.pw.parameters["ELECTRONS"].setdefault("diago_full_acc", True)
 
         # If `nbands_factor` is defined in the inputs we set the `nbnd` parameter
-        if 'nbands_factor' in self.inputs:
+        if "nbands_factor" in self.inputs:
             factor = self.inputs.nbands_factor.value
-            parameters = self.ctx.workchain_scf.outputs.output_parameters.get_dict()
-            if int(parameters['number_of_spin_components']) > 1:
+            parameters = (
+                self.ctx.workchain_scf.outputs.output_parameters.get_dict()
+            )
+            if int(parameters["number_of_spin_components"]) > 1:
                 nspin_factor = 2
             else:
                 nspin_factor = 1
-            nbands = int(parameters['number_of_bands'])
-            nelectron = int(parameters['number_of_electrons'])
+            nbands = int(parameters["number_of_bands"])
+            nelectron = int(parameters["number_of_electrons"])
             nbnd = max(
                 int(0.5 * nelectron * nspin_factor * factor),
-                int(0.5 * nelectron * nspin_factor) + 4 * nspin_factor, nbands
+                int(0.5 * nelectron * nspin_factor) + 4 * nspin_factor,
+                nbands,
             )
-            inputs.pw.parameters['SYSTEM']['nbnd'] = nbnd
+            inputs.pw.parameters["SYSTEM"]["nbnd"] = nbnd
 
         # Otherwise set the current number of bands, unless explicitly set in the inputs
         else:
-            inputs.pw.parameters['SYSTEM'].setdefault(
-                'nbnd', self.ctx.current_number_of_bands)
+            inputs.pw.parameters["SYSTEM"].setdefault(
+                "nbnd", self.ctx.current_number_of_bands
+            )
 
         inputs = prepare_process_inputs(PwBaseWorkChain, inputs)
         running = self.submit(PwBaseWorkChain, **inputs)
 
-        self.report(f'launching PwBaseWorkChain<{running.pk}> in bands mode')
+        self.report(f"launching PwBaseWorkChain<{running.pk}> in bands mode")
 
         return ToContext(workchain_bands=running)
 
@@ -308,24 +336,28 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
 
         if not workchain.is_finished_ok:
             self.report(
-                f'bands PwBaseWorkChain failed with exit status {workchain.exit_status}')
+                f"bands PwBaseWorkChain failed with exit status {workchain.exit_status}"
+            )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_BANDS
 
     def results(self):
         """Attach the desired output nodes directly as outputs of the workchain."""
-        self.report('workchain succesfully completed')
-        self.out('scf_parameters',
-                 self.ctx.workchain_scf.outputs.output_parameters)
-        self.out('band_parameters',
-                 self.ctx.workchain_bands.outputs.output_parameters)
-        self.out('band_structure', self.ctx.workchain_bands.outputs.output_band)
+        self.report("workchain succesfully completed")
+        self.out(
+            "scf_parameters", self.ctx.workchain_scf.outputs.output_parameters
+        )
+        self.out(
+            "band_parameters",
+            self.ctx.workchain_bands.outputs.output_parameters,
+        )
+        self.out("band_structure", self.ctx.workchain_bands.outputs.output_band)
 
     def on_terminated(self):
         """Clean the working directories of all child calculations if `clean_workdir=True` in the inputs."""
         super().on_terminated()
 
         if self.inputs.clean_workdir.value is False:
-            self.report('remote folders will not be cleaned')
+            self.report("remote folders will not be cleaned")
             return
 
         cleaned_calcs = []
@@ -340,4 +372,5 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
 
         if cleaned_calcs:
             self.report(
-                f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}")
+                f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}"
+            )

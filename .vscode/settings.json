@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/home/ias/miniconda3/envs/aiida/bin/python"
+    "python.pythonPath": "/home/ias/miniconda3/envs/aiida/bin/python",
+    "ai-docstring.ServerEndpoint": "717c3667042f.ngrok.io",
 }

@@ -7,11 +7,11 @@ from aiida.engine import WorkChain, ToContext
 from aiida.orm.nodes.data.upf import get_pseudos_from_structure
 from aiida.plugins import WorkflowFactory
 
-from aiida_quantumespresso.utils.protocols.pw import ProtocolManager
+from aiida_mobility.utils.protocols.pw import ProtocolManager
 from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
 from aiida_quantumespresso.utils.resources import get_default_options
 
-from aiida_wannier90_workflows.workflows.pw.bands import PwBandsWorkChain
+from aiida_mobility.workflows.pw.bands import PwBandsWorkChain
 # PwBandsWorkChain = WorkflowFactory('quantumespresso.pw.bands')
 
 
@@ -33,6 +33,8 @@ def validate_cutoffs(cutoffs_dict, ctx):
         dual = cutoffs_dict['dual']
     except KeyError as exception:
         return 'Missing key `cutoff` or `dual` in cutoffs dictionary'
+    except TypeError:
+        pass
 
 
 class PwBandStructureWorkChain(WorkChain):
@@ -63,6 +65,12 @@ class PwBandStructureWorkChain(WorkChain):
             required=False,
             help='Recommended cutoffs. e.g. {"cutoff": 30, "dual": 4.9}',
             validator=validate_cutoffs
+        )
+        spec.input(
+            'should_run_relax',
+            valid_type=orm.Bool,
+            default=lambda: orm.Bool(False),
+            help='Whether to run relax before scf.',
         )
         spec.expose_outputs(PwBandsWorkChain)
         spec.outline(
@@ -125,7 +133,7 @@ class PwBandStructureWorkChain(WorkChain):
                         'failed to retrieve the cutoff or dual factor for {}'.format(kind))
                     return self.exit_codes.ERROR_INVALID_INPUT_UNRECOGNIZED_KIND
 
-        self.ctx.parameters = orm.Dict(dict={
+        parameters = {
             'CONTROL': {
                 'restart_mode': 'from_scratch',
                 'tstress': self.ctx.protocol['tstress'],
@@ -134,14 +142,22 @@ class PwBandStructureWorkChain(WorkChain):
             'SYSTEM': {
                 'ecutwfc': max(ecutwfc),
                 'ecutrho': max(ecutrho),
-                'smearing': self.ctx.protocol['smearing'],
-                'degauss': self.ctx.protocol['degauss'],
-                'occupations': self.ctx.protocol['occupations'],
+                # 'smearing': self.ctx.protocol['smearing'],
+                # 'degauss': self.ctx.protocol['degauss'],
+                # 'occupations': self.ctx.protocol['occupations'],
             },
             'ELECTRONS': {
                 'conv_thr': self.ctx.protocol['convergence_threshold_per_atom'] * len(self.inputs.structure.sites),
             }
-        })
+        }
+        if 'smearing' in self.ctx.protocol:
+            parameters['SYSTEM']['smearing'] = self.ctx.protocol['smearing']
+        if 'degauss' in self.ctx.protocol:
+            parameters['SYSTEM']['degauss'] = self.ctx.protocol['degauss']
+        if 'occupations' in self.ctx.protocol:
+            parameters['SYSTEM']['occupations'] = self.ctx.protocol['occupations']
+
+        self.ctx.parameters = orm.Dict(dict=parameters)
 
     def run_bands(self):
         """Run the `PwBandsWorkChain` to compute the band structure."""
@@ -178,19 +194,28 @@ class PwBandStructureWorkChain(WorkChain):
 
             return inputs
 
+        def get_relax_inputs(self):
+            """get_relax_inputs Get relaxation inputs .
+            """
+            inputs = {
+                'base': get_common_inputs(),
+                'relaxation_scheme': orm.Str('vc-relax'),
+                'meta_convergence': orm.Bool(self.ctx.protocol['meta_convergence']),
+                'volume_convergence': orm.Float(self.ctx.protocol['volume_convergence']),
+            }
+            return inputs
+
         inputs = AttributeDict({
             'structure': self.inputs.structure,
-            # 'relax': {
-            #     'base': get_common_inputs(),
-            #     'relaxation_scheme': orm.Str('vc-relax'),
-            #     'meta_convergence': orm.Bool(self.ctx.protocol['meta_convergence']),
-            #     'volume_convergence': orm.Float(self.ctx.protocol['volume_convergence']),
-            # },
             'scf': get_common_inputs(),
             'bands': get_common_inputs(),
         })
 
-        # inputs.relax.base.kpoints_distance = orm.Float(self.ctx.protocol['kpoints_mesh_density'])
+        if self.inputs.should_run_relax.value:
+            inputs['relax'] = get_relax_inputs()
+            inputs.relax.base.kpoints_distance = orm.Float(
+                self.ctx.protocol['kpoints_mesh_density'])
+
         inputs.scf.kpoints_distance = orm.Float(
             self.ctx.protocol['kpoints_mesh_density'])
         inputs.bands.kpoints_distance = orm.Float(
