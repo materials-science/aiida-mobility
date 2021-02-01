@@ -1,15 +1,8 @@
 #!/usr/bin/env runaiida
-"""
-Author: PorYoung
-Date: 2021-01-28 13:28:09
-LastEditTime: 2021-01-30 11:17:58
-LastEditors: Please set LastEditors
-Description: In User Settings Edit
-FilePath: /aiida-mobility/examples/workflows/ph/run_ph_workflow.py
-"""
 import argparse
 from aiida_mobility.utils import (
     add_to_group,
+    create_kpoints,
     print_help,
     read_structure,
     write_pk_to_file,
@@ -60,6 +53,12 @@ def parse_arugments():
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
+    )
+    parser.add_argument(
+        "--start_test",
+        default=False,
+        action="store_true",
+        help="Only calculate the first point.",
     )
     parser.add_argument(
         "-N", "--num_machines", type=int, help="number of machines", default=1
@@ -123,32 +122,20 @@ def submit_workchain(
         raise SystemError("Cannot get remote folder from Node {}.".format(node))
 
     structure = read_structure(structure_file)
-    inputs = {
-        "structure": structure,
-        "distance": orm.Float(distance),
-        "force_parity": orm.Bool(False),
-        "metadata": {"call_link_label": "create_kpoints_from_distance"},
-    }
-    kpoints = create_kpoints_from_distance(**inputs)
+    kpoints = create_kpoints(structure, distance, set_2d_mesh)
 
-    if set_2d_mesh:
-        kpoints = kpoints.clone()
-        mesh = kpoints.get_kpoints_mesh()
-        mesh[0][2] = 1
-        kpoints.set_kpoints_mesh(mesh[0])
+    inputph_parameters = {
+        "INPUTPH": {
+            "tr2_ph": tr2_ph,
+            "epsil": epsil,
+        }
+    }
 
     ph_calculation_parameters = {
         "ph": {
             "code": orm.Code.get_from_string(ph_code),
             "qpoints": kpoints,
-            "parameters": orm.Dict(
-                dict={
-                    "INPUTPH": {
-                        "tr2_ph": tr2_ph,
-                        "epsil": epsil,
-                    }
-                }
-            ),
+            "parameters": orm.Dict(dict=inputph_parameters),
             "parent_folder": parent_folder,
             "metadata": {
                 "options": {
