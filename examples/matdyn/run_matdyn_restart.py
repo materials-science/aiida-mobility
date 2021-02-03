@@ -10,7 +10,9 @@ from aiida_mobility.utils import (
     read_structure,
     write_pk_to_file,
 )
-from aiida_mobility.workflows.matdyn.matdyn_workflow import MatdynWorkChain
+from aiida_mobility.workflows.matdyn.matdyn_restart import (
+    MatdynRestartWorkChain,
+)
 
 from aiida import orm
 
@@ -231,6 +233,12 @@ def get_pw_common_inputs(
             "restart_mode": "from_scratch",
             "tstress": protocol["tstress"],
             "tprnfor": protocol["tprnfor"],
+            "etot_conv_thr": protocol["convergence_threshold_per_atom"]
+            * number_of_atoms
+            * 10,
+            "forc_conv_thr": protocol["convergence_threshold_per_atom"]
+            * number_of_atoms
+            * 10,
         },
         "SYSTEM": {
             "ecutwfc": max(ecutwfc),
@@ -359,6 +367,11 @@ def submit_workchain(
             "meta_convergence": orm.Bool(protocol["meta_convergence"]),
             "volume_convergence": orm.Float(protocol["volume_convergence"]),
         }
+        parameters = relax_parameters["base"]["pw"]["parameters"].get_dict()
+        parameters.setdefault(
+            "CELL", {"press_conv_thr": protocol["press_conv_thr"]}
+        )
+        relax_parameters["base"]["pw"]["parameters"] = orm.Dict(dict=parameters)
         workchain_parameters["relax"] = relax_parameters
 
     ph_calculation_parameters = {
@@ -401,9 +414,9 @@ def submit_workchain(
     workchain_parameters["matdyn_distance"] = orm.Float(matdyn_distance)
 
     if daemon is not None:
-        workchain = submit(MatdynWorkChain, **workchain_parameters)
+        workchain = submit(MatdynRestartWorkChain, **workchain_parameters)
     else:
-        workchain = run_get_pk(MatdynWorkChain, **workchain_parameters)
+        workchain = run_get_pk(MatdynRestartWorkChain, **workchain_parameters)
 
     add_to_group(workchain, group_name)
     print_help(workchain, structure)

@@ -28,12 +28,16 @@ def _get_all_protocol_modifiers():
                 "SSSP-efficiency-1.0": _load_pseudo_metadata(
                     "sssp_efficiency_1.0.json"
                 ),
-                "SSSP-precision-1.0": _load_pseudo_metadata("sssp_precision_1.0.json"),
+                "SSSP-precision-1.0": _load_pseudo_metadata(
+                    "sssp_precision_1.0.json"
+                ),
                 # SSSP Efficiency & Precision v1.1, see https://www.materialscloud.org/archive/2018.0001/v3
                 "SSSP-efficiency-1.1": _load_pseudo_metadata(
                     "sssp_efficiency_1.1.json"
                 ),
-                "SSSP-precision-1.1": _load_pseudo_metadata("sssp_precision_1.1.json"),
+                "SSSP-precision-1.1": _load_pseudo_metadata(
+                    "sssp_precision_1.1.json"
+                ),
             },
             "pseudo_default": "SSSP-efficiency-1.1",
             "parameters": {
@@ -98,6 +102,7 @@ def _get_all_protocol_modifiers():
                     "kpoints_mesh_density": 0.1,
                     "kpoints_distance_for_bands": 0.01,
                     "convergence_threshold_per_atom": 1.0e-10,
+                    "press_conv_thr": 1.0e-4,
                     "smearing": "marzari-vanderbilt",
                     "degauss": 0.02,
                     "occupations": "smearing",
@@ -112,6 +117,7 @@ def _get_all_protocol_modifiers():
                     "kpoints_mesh_density": 0.1,
                     "kpoints_distance_for_bands": 0.01,
                     "convergence_threshold_per_atom": 1.0e-10,
+                    "press_conv_thr": 1.0e-4,
                     "smearing": "gaussian",
                     "degauss": 0.02,
                     "occupations": "smearing",
@@ -137,6 +143,7 @@ def _get_all_protocol_modifiers():
                     "kpoints_mesh_density": 0.1,
                     "kpoints_distance_for_bands": 0.01,
                     "convergence_threshold_per_atom": 1.0e-10,
+                    "press_conv_thr": 1.0e-4,
                     "meta_convergence": True,
                     "volume_convergence": 0.01,
                     "tstress": True,
@@ -239,7 +246,9 @@ class ProtocolManager:
         """Get all valid parameters modifier names."""
         return list(self.modifiers["parameters"].keys())
 
-    def get_default_parameters_modifier_name(self):  # pylint: disable=invalid-name
+    def get_default_parameters_modifier_name(
+        self,
+    ):  # pylint: disable=invalid-name
         """Return the default parameter modifier name (or None if no default is specified)."""
         return self.modifiers.get("parameters_default", None)
 

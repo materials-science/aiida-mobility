@@ -33,6 +33,8 @@ class PhBaseWorkChain(BaseRestartWorkChain):
         # yapf: disable
         super().define(spec)
         spec.expose_inputs(PhCalculation, namespace='ph')
+        spec.input('check_imaginary_frequencies', valid_type=orm.Bool,default=lambda: orm.Bool(True))
+        spec.input('frequency_threshold', valid_type=orm.Float, default=lambda: orm.Float(-5.0),help='The threshold to check if imaginary frequencies exsit in G.')
         spec.input('only_initialization', valid_type=orm.Bool,
                    default=lambda: orm.Bool(False))
 
@@ -52,6 +54,9 @@ class PhBaseWorkChain(BaseRestartWorkChain):
                        message='The `metadata.options` did not specify both `resources.num_machines` and `max_wallclock_seconds`.')
         spec.exit_code(300, 'ERROR_UNRECOVERABLE_FAILURE',
                        message='The calculation failed with an unrecoverable error.')
+        spec.exit_code(301, 'ERROR_IMAGINARY_FREQUENCIES',
+                       message='The calculation failed with an imaginary frequencies error.')
+
         # yapf: enable
 
     def setup(self):
@@ -62,6 +67,10 @@ class PhBaseWorkChain(BaseRestartWorkChain):
         """
         super().setup()
         self.ctx.restart_calc = None
+        self.ctx.check_imaginary_frequencies = (
+            self.inputs.check_imaginary_frequencies.value
+        )
+        self.ctx.frequency_threshold = self.inputs.frequency_threshold.value
         self.ctx.inputs = AttributeDict(
             self.exposed_inputs(PhCalculation, "ph")
         )
@@ -82,6 +91,10 @@ class PhBaseWorkChain(BaseRestartWorkChain):
 
         if self.inputs.only_initialization.value:
             self.ctx.inputs.settings["ONLY_INITIALIZATION"] = True
+
+        if self.ctx.check_imaginary_frequencies:
+            self.ctx.inputs.parameters["INPUTPH"]["start_q"] = 1
+            self.ctx.inputs.parameters["INPUTPH"]["last_q"] = 1
 
     def validate_resources(self):
         """Validate the inputs related to the resources.
@@ -147,6 +160,51 @@ class PhBaseWorkChain(BaseRestartWorkChain):
             return ProcessHandlerReport(
                 True, self.exit_codes.ERROR_UNRECOVERABLE_FAILURE
             )
+
+    @process_handler(priority=590)
+    def handle_imaginary_frequencies(self, node):
+        """Handle calculations with imaginary frequencies in dynamical_matrix_1.
+        Currently checking the first point only, adding a counter to check more."""
+        # for value in $(seq 2 1 14)
+        #     do
+        #     cp ph.in ph_$value.in
+        #     sed -i  "s|.*start_q.*|    start_q = $value |g" ph_$value.in
+        #     sed -i  "s|.*last_q.*|    last_q = $value |g" ph_$value.in
+        #     mpirun -n 72 ph.x < ph_$value.in > ph_$value.out
+        # done
+        if node.is_finished_ok and self.ctx.check_imaginary_frequencies:
+            self.report_error_handled(
+                node, "checking imaginary frequencies in dynamical_matrix_1..."
+            )
+            try:
+                dynamical_matrix_1 = (
+                    node.outputs.output_parameters.get_dict().get(
+                        "dynamical_matrix_1", None
+                    )
+                )
+                frequencies = dynamical_matrix_1.get("frequencies", None)
+                if frequencies is None:
+                    raise AttributeError
+                else:
+                    if frequencies[0] > self.ctx.frequency_threshold:
+                        self.ctx.restart_calc = node
+                        self.ctx.inputs.parameters["INPUTPH"].pop("start_q")
+                        self.ctx.inputs.parameters["INPUTPH"].pop("last_q")
+
+                        action = f"checked successfully and restarting..."
+                        self.report_error_handled(node, action)
+                        return ProcessHandlerReport(True)
+                    else:
+                        self.report_error_handled(
+                            node, "imaginary frequencies found, aborting..."
+                        )
+                        return ProcessHandlerReport(
+                            True, self.exit_codes.ERROR_IMAGINARY_FREQUENCIES
+                        )
+            except AttributeError as e:
+                self.report_error_handled(
+                    node, "not found valid dynamical_matrix_1 outputs..."
+                )
 
     @process_handler(
         priority=580, exit_codes=PhCalculation.exit_codes.ERROR_OUT_OF_WALLTIME

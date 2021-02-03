@@ -101,6 +101,7 @@ def submit_workchain(
     epsil,
     distance,
     set_2d_mesh,
+    start_test,
     num_machines,
     num_mpiprocs_per_machine,
     walltime,
@@ -130,6 +131,10 @@ def submit_workchain(
             "epsil": epsil,
         }
     }
+
+    if start_test:
+        inputph_parameters["INPUTPH"]["start_q"] = 1
+        inputph_parameters["INPUTPH"]["last_q"] = 1
 
     ph_calculation_parameters = {
         "ph": {
@@ -170,6 +175,7 @@ if __name__ == "__main__":
         args.epsil,
         args.distance,
         args.set_2d_mesh,
+        args.start_test,
         args.num_machines,
         args.num_mpiprocs_per_machine,
         args.walltime,

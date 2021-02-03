@@ -325,6 +325,16 @@ class Wannier90BandsWorkChain(WorkChain):
                 "restart_mode": "from_scratch",
                 "tstress": self.ctx.protocol["tstress"],
                 "tprnfor": self.ctx.protocol["tprnfor"],
+                "etot_conv_thr": self.ctx.protocol[
+                    "convergence_threshold_per_atom"
+                ]
+                * number_of_atoms
+                * 10,
+                "forc_conv_thr": self.ctx.protocol[
+                    "convergence_threshold_per_atom"
+                ]
+                * number_of_atoms
+                * 10,
             },
             "SYSTEM": {
                 "ecutwfc": max(ecutwfc),
@@ -564,6 +574,11 @@ class Wannier90BandsWorkChain(WorkChain):
                 self.ctx.protocol["volume_convergence"]
             ),
         }
+        parameters = inputs["base"]["pw"]["parameters"].get_dict()
+        parameters.setdefault(
+            "CELL", {"press_conv_thr": self.ctx.protocol["press_conv_thr"]}
+        )
+        inputs["base"]["pw"]["parameters"] = orm.Dict(dict=parameters)
         return inputs
 
     def get_scf_inputs(self):
