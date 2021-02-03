@@ -32,21 +32,27 @@ def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
             scf = load_node(inputs["scf_node"].value)
             remote = scf.outputs.remote_folder
         except Exception:
-            return MatdynWorkChain.exit_codes.ERROR_INVALID_SCF_NODE.message
+            return (
+                MatdynRestartWorkChain.exit_codes.ERROR_INVALID_SCF_NODE.message
+            )
     if "ph_node" in inputs:
         try:
             ph = load_node(inputs["ph_node"].value)
             remote = ph.outputs.remote_folder
         except Exception:
-            return MatdynWorkChain.exit_codes.ERROR_INVALID_PH_NODE.message
+            return (
+                MatdynRestartWorkChain.exit_codes.ERROR_INVALID_PH_NODE.message
+            )
     if "q2r_node" in inputs:
         try:
             q2r = load_node(inputs["q2r_node"].value)
             remote = q2r.outputs.remote_folder
         except Exception:
-            return MatdynWorkChain.exit_codes.ERROR_INVALID_Q2R_NODE.message
+            return (
+                MatdynRestartWorkChain.exit_codes.ERROR_INVALID_Q2R_NODE.message
+            )
     if "qpoints" not in inputs["ph"]["ph"] and "qpoints_distance" not in inputs:
-        return MatdynWorkChain.exit_codes.ERROR_INVALID_QPOINTS.message
+        return MatdynRestartWorkChain.exit_codes.ERROR_INVALID_QPOINTS.message
 
 
 class MatdynRestartWorkChain(WorkChain):
