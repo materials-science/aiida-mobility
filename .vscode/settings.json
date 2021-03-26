@@ -1,4 +1,25 @@
 {
     "python.pythonPath": "/home/ias/miniconda3/envs/aiida/bin/python",
     "ai-docstring.ServerEndpoint": "717c3667042f.ngrok.io",
+    "grammarly.overrides": [
+        {
+            "files": [
+                "**/dev.md"
+            ],
+            "config": {
+                "audience": "knowledgeable",
+                "dialect": "american",
+                "domain": "academic",
+                "emotions": [
+                    "neutral",
+                    "friendly",
+                    "analytical"
+                ],
+                "goals": [
+                    "inform",
+                    "convince"
+                ]
+            }
+        }
+    ],
 }

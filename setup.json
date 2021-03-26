@@ -7,12 +7,12 @@
     },
     "name": "aiida-mobility",
     "license": "Private code",
-    "author": "Antimo Marrazzo, Giovanni Pizzi, Junfeng Qiao",
+    "author": "PorYoung",
     "author_email": "developers@aiida.net",
     "install_requires": [
         "aiida-core>=1.1.1,<2",
-        "aiida-quantumespresso>=3.0.0a6",
-        "aiida-wannier90>=2.0.0"
+        "aiida-quantumespresso>=3.0.0a6,<=3.3.0",
+        "aiida-wannier90>=2.0.0,<=2.0.1"
     ],
     "url": "https://github.com/materials-science/aiida-mobility",
     "python_requires": ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*",

@@ -97,12 +97,31 @@ def _get_all_protocol_modifiers():
                     "tprnfor": True,
                     "num_bands_factor": None,  # number of bands wrt number of occupied bands
                 },
+            },
+            "parameters_default": "default",
+        },
+        "td-1.0": {
+            "pseudo": {
+                "SSSP-efficiency-1.0": _load_pseudo_metadata(
+                    "sssp_efficiency_1.0.json"
+                ),
+                "SSSP-precision-1.0": _load_pseudo_metadata(
+                    "sssp_precision_1.0.json"
+                ),
+                "SSSP-efficiency-1.1": _load_pseudo_metadata(
+                    "sssp_efficiency_1.1.json"
+                ),
+                "SSSP-precision-1.1": _load_pseudo_metadata(
+                    "sssp_precision_1.1.json"
+                ),
+            },
+            "pseudo_default": "SSSP-efficiency-1.1",
+            "parameters": {
                 "accurate_default": {
                     "kpoints_mesh_offset": [0.0, 0.0, 0.0],
-                    "kpoints_mesh_density": 0.1,
+                    "kpoints_mesh_density": 0.2,
                     "kpoints_distance_for_bands": 0.01,
                     "convergence_threshold_per_atom": 1.0e-10,
-                    "press_conv_thr": 1.0e-4,
                     "smearing": "marzari-vanderbilt",
                     "degauss": 0.02,
                     "occupations": "smearing",
@@ -114,10 +133,12 @@ def _get_all_protocol_modifiers():
                 },
                 "accurate_gaussian": {
                     "kpoints_mesh_offset": [0.0, 0.0, 0.0],
-                    "kpoints_mesh_density": 0.1,
+                    "kpoints_mesh_density": 0.2,
                     "kpoints_distance_for_bands": 0.01,
                     "convergence_threshold_per_atom": 1.0e-10,
-                    "press_conv_thr": 1.0e-4,
+                    "forc_conv_thr": 1.0e-3,
+                    "etot_conv_thr": 1.0e-4,
+                    "press_conv_thr": 1.0e-1,
                     "smearing": "gaussian",
                     "degauss": 0.02,
                     "occupations": "smearing",
@@ -127,37 +148,79 @@ def _get_all_protocol_modifiers():
                     "tprnfor": True,
                     "num_bands_factor": None,  # number of bands wrt number of occupied bands
                 },
-                "default_fixed": {
+                "fast_fixed": {
+                    "occupations": "fixed",
                     "kpoints_mesh_offset": [0.0, 0.0, 0.0],
-                    "kpoints_mesh_density": 0.2,
-                    "kpoints_distance_for_bands": 0.01,
-                    "convergence_threshold_per_atom": 1.0e-10,
+                    "kpoints_mesh_density": 0.4,
+                    "kpoints_distance_for_bands": 0.02,
+                    "convergence_threshold_per_atom": 1.0e-6,
+                    "forc_conv_thr": 1.0e-3,
+                    "etot_conv_thr": 1.0e-4,
+                    "press_conv_thr": 1.0e-1,
                     "meta_convergence": True,
                     "volume_convergence": 0.01,
                     "tstress": True,
                     "tprnfor": True,
                     "num_bands_factor": None,  # number of bands wrt number of occupied bands
+                    "assume_isolated": "2D",
+                    "cell_dofree": "2Dxy",
+                    "vdw_corr": "DFT-D",
+                },
+                "default_fixed": {
+                    "occupations": "fixed",
+                    "kpoints_mesh_offset": [0.0, 0.0, 0.0],
+                    "kpoints_mesh_density": 0.3,
+                    "kpoints_distance_for_bands": 0.02,
+                    "convergence_threshold_per_atom": 1.0e-9,
+                    "forc_conv_thr": 1.0e-3,
+                    "etot_conv_thr": 1.0e-4,
+                    "press_conv_thr": 1.0e-1,
+                    "meta_convergence": True,
+                    "volume_convergence": 0.01,
+                    "tstress": True,
+                    "tprnfor": True,
+                    "num_bands_factor": None,  # number of bands wrt number of occupied bands
+                    "assume_isolated": "2D",
+                    "cell_dofree": "2Dxy",
+                    "vdw_corr": "DFT-D",
                 },
                 "accurate_fixed": {
                     "kpoints_mesh_offset": [0.0, 0.0, 0.0],
-                    "kpoints_mesh_density": 0.1,
+                    "kpoints_mesh_density": 0.2,
                     "kpoints_distance_for_bands": 0.01,
-                    "convergence_threshold_per_atom": 1.0e-10,
-                    "press_conv_thr": 1.0e-4,
+                    "convergence_threshold_per_atom": 1.0e-12,
+                    "forc_conv_thr": 1.0e-8,
+                    "etot_conv_thr": 1.0e-8,
+                    "press_conv_thr": 1.0e-8,
                     "meta_convergence": True,
                     "volume_convergence": 0.01,
                     "tstress": True,
                     "tprnfor": True,
-                    "num_bands_factor": None,  # number of bands wrt number of occupied bands
+                    "occupations": "fixed",
+                    # increase if error occurred
+                    "nstep": 100,
+                    "num_bands_factor": 2,  # number of bands wrt number of occupied bands
+                    "assume_isolated": "2D",
+                    "cell_dofree": "2Dxy",
+                    "electron_maxstep": 200,
+                    "diago_full_acc": True,
+                    "mixing_mode": "local-TF",
+                    "mixing_beta": 0.7,
+                    "vdw_corr": "DFT-D",
                 },
             },
-            "parameters_default": "default",
-        }
+            "parameters_default": "accurate_default",
+        },
     }
     protocols["theos-ht-1.0"]["parameters"]["scdm"] = deepcopy(
         protocols["theos-ht-1.0"]["parameters"]["default"]
     )
     protocols["theos-ht-1.0"]["parameters"]["scdm"]["num_bands_factor"] = 3.0
+
+    protocols["td-1.0"]["parameters"]["scdm"] = deepcopy(
+        protocols["td-1.0"]["parameters"]["accurate_default"]
+    )
+    protocols["td-1.0"]["parameters"]["scdm"]["num_bands_factor"] = 3.0
 
     # a protocol for testing purpose, decrease kmesh density & ecutoff
     testing = deepcopy(protocols["theos-ht-1.0"])

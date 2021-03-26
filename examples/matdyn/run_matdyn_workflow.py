@@ -1,5 +1,9 @@
 #!/usr/bin/env runaiida
 import argparse
+from examples.matdyn.run_matdyn_restart import (
+    get_protocol,
+    get_pw_common_inputs,
+)
 from aiida.engine.launch import submit, run_get_pk
 from aiida.common.extendeddicts import AttributeDict
 from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
@@ -40,8 +44,8 @@ def parse_arugments():
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0' and 'testing'",
-        default="theos-ht-1.0",
+        help="available protocols are 'theos-ht-1.0', 'td-1.0' and 'testing'",
+        default="td-1.0",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
@@ -133,7 +137,7 @@ def parse_arugments():
     return args
 
 
-def get_protocol(structure, scf_parameters_name, protocol, pseudos):
+""" def get_protocol(structure, scf_parameters_name, protocol, pseudos):
     # get custom pseudo
     modifiers = {"parameters": scf_parameters_name}
     recommended_cutoffs = None
@@ -181,10 +185,10 @@ def get_protocol(structure, scf_parameters_name, protocol, pseudos):
     protocol_modifiers = modifiers
     protocol = protocol_manager.get_protocol_data(modifiers=protocol_modifiers)
 
-    return protocol, recommended_cutoffs
+    return protocol, recommended_cutoffs """
 
 
-def get_pw_common_inputs(
+""" def get_pw_common_inputs(
     structure,
     pw_code,
     protocol,
@@ -278,7 +282,7 @@ def get_pw_common_inputs(
     )
 
     # return scf_parameters
-    return inputs
+    return inputs """
 
 
 def get_options(num_machines, num_mpiprocs_per_machine, walltime=5):
@@ -354,6 +358,7 @@ def submit_workchain(
                 set_2d_mesh,
                 num_machines,
                 num_mpiprocs_per_machine,
+                mode="vc-relax",
             ),
             "relaxation_scheme": orm.Str("vc-relax"),
             "meta_convergence": orm.Bool(protocol["meta_convergence"]),
@@ -407,7 +412,7 @@ def submit_workchain(
 
     add_to_group(workchain, group_name)
     print_help(workchain, structure)
-    write_pk_to_file(workchain, structure, "phono")
+    write_pk_to_file(workchain, structure, "phonon")
 
 
 if __name__ == "__main__":

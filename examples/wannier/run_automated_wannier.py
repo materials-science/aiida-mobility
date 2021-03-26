@@ -53,7 +53,7 @@ def parse_arugments():
     parser.add_argument(
         "-p",
         "--parameters",
-        help="available parameters protocols are 'fast', 'default' and 'accurate'",
+        help="available parameters protocols are 'fast', 'default'",
         default="default",
     )
     parser.add_argument(
@@ -63,6 +63,12 @@ def parse_arugments():
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
+    parser.add_argument(
+        "--kpoints-mesh",
+        nargs=3,
+        type=int,
+        help="The number of points in the kpoint mesh along each basis vector.",
+    )
     parser.add_argument(
         "--cutoffs",
         type=float,
@@ -169,6 +175,7 @@ def submit_workchain(
     daemon,
     set_2d_mesh,
     cutoffs,
+    kpoints_mesh,
 ):
     codes = check_codes()
 
@@ -275,6 +282,16 @@ def submit_workchain(
         wannier90_workchain_parameters["cutoffs"] = orm.Dict(
             dict=recommended_cutoffs
         )
+
+    if kpoints_mesh is not None:
+        try:
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(kpoints_mesh)
+            wannier90_workchain_parameters["kpoints"] = kpoints
+        except ValueError as exception:
+            raise SystemExit(
+                f"failed to create a KpointsData mesh out of {kpoints_mesh}\n{exception}"
+            )
     if run_relax:
         wannier90_workchain_parameters["should_run_relax"] = orm.Bool(run_relax)
 
@@ -321,4 +338,5 @@ if __name__ == "__main__":
         args.daemon,
         args.set_2d_mesh,
         args.cutoffs,
+        args.kpoints_mesh,
     )

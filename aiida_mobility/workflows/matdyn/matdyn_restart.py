@@ -51,7 +51,7 @@ def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
             return (
                 MatdynRestartWorkChain.exit_codes.ERROR_INVALID_Q2R_NODE.message
             )
-    if "qpoints" not in inputs["ph"]["ph"] and "qpoints_distance" not in inputs:
+    if "qpoints" not in inputs and "qpoints_distance" not in inputs:
         return MatdynRestartWorkChain.exit_codes.ERROR_INVALID_QPOINTS.message
 
 
@@ -94,13 +94,15 @@ class MatdynRestartWorkChain(WorkChain):
             "structure", valid_type=StructureData, help="The inputs structure."
         )
         spec.input(
-            "qpoints_distance",
-            valid_type=Float,
-            help="qpoint distance to get qpoints.",
+            "qpoints",
+            valid_type=orm.KpointsData,
+            required=False,
+            help="qpoints.",
         )
         spec.input(
             "qpoints_distance",
             valid_type=Float,
+            required=False,
             help="qpoint distance to get qpoints.",
         )
         spec.input(
@@ -148,9 +150,11 @@ class MatdynRestartWorkChain(WorkChain):
         spec.inputs.validator = validate_inputs
         spec.outline(
             cls.setup,
-            while_(cls.should_run_relax)(
-                cls.run_relax,
-                cls.inspect_relax,
+            while_(cls.should_restart)(
+                if_(cls.should_run_relax)(
+                    cls.run_relax,
+                    cls.inspect_relax,
+                ),
                 if_(cls.should_run_scf)(
                     cls.run_scf,
                     cls.inspect_scf,
@@ -159,17 +163,18 @@ class MatdynRestartWorkChain(WorkChain):
                     cls.run_ph,
                     cls.inspect_ph,
                 ),
+                if_(cls.check_ph_status_ok)(
+                    if_(cls.should_run_q2r)(
+                        cls.run_q2r,
+                        cls.inspect_q2r,
+                    ),
+                    if_(cls.should_run_seekpath)(
+                        cls.run_seekpath,
+                    ),
+                    cls.run_matdyn,
+                    cls.inspect_matdyn,
+                ),
             ),
-            cls.check_ph_status,
-            if_(cls.should_run_q2r)(
-                cls.run_q2r,
-                cls.inspect_q2r,
-            ),
-            if_(cls.should_run_seekpath)(
-                cls.run_seekpath,
-            ),
-            cls.run_matdyn,
-            cls.inspect_matdyn,
             cls.results,
         )
         spec.exit_code(
@@ -228,7 +233,7 @@ class MatdynRestartWorkChain(WorkChain):
         spec.output("q2r_force_constants")
         spec.output("matdyn_parameters", valid_type=Dict)
         spec.output("matdyn_phonon_bands")
-        spec.output("output_relax_structure")
+        spec.output("output_relax_structure", required=False)
 
         spec.output(
             "primitive_structure",
@@ -246,7 +251,6 @@ class MatdynRestartWorkChain(WorkChain):
         self.ctx.iteration = 0
         self.ctx.no_imaginary_frequencies = False
         self.ctx.current_structure = self.inputs.structure
-        self.ctx.qpoints_distance = self.inputs.get("qpoints_distance")
         self.ctx.matdyn_distance = self.inputs.get("matdyn_distance")
         if "relax" in self.inputs:
             self.ctx.relax_inputs = AttributeDict(
@@ -258,26 +262,66 @@ class MatdynRestartWorkChain(WorkChain):
         self.ctx.ph_inputs = AttributeDict(
             self.exposed_inputs(PhBaseWorkChain, namespace="ph")
         )
+        if "qpoints" in self.inputs:
+            self.ctx.ph_inputs.ph.qpoints = self.inputs.get("qpoints")
+        elif "qpoints_distance" in self.inputs:
+            self.ctx.qpoints_distance = self.inputs.get("qpoints_distance")
+        else:
+            raise AttributeError("Both qpoints and qpoints_distance not found.")
 
-    def should_run_relax(self):
-        """If the 'relax' input namespace was specified, we relax the input structure."""
+    def should_restart(self):
         return (
-            "relax" in self.inputs
-            and not self.ctx.no_imaginary_frequencies
+            not self.ctx.no_imaginary_frequencies
             and self.ctx.iteration < self.inputs.max_restart_iterations.value
         )
 
-    def check_ph_status(self):
-        if (
+    def should_run_relax(self):
+        """If the 'relax' input namespace was specified, we relax the input structure."""
+        return "relax" in self.inputs
+
+    def check_ph_status_ok(self):
+        if not self.ctx.no_imaginary_frequencies:
+            # if self.ctx.iteration >= self.inputs.max_restart_iterations.value:
+            #     self.report("maximum number of restart iterations exceeded")
+            #     return self.exit_codes.ERROR_IMAGINARY_FREQUENCIES
+            # else:
+            return False
+        else:
+            return True
+        """ if (
             not self.ctx.no_imaginary_frequencies
             and self.ctx.iteration >= self.inputs.max_restart_iterations.value
         ):
             self.report("maximum number of restart iterations exceeded")
-            return self.exit_codes.ERROR_IMAGINARY_FREQUENCIES
+            return self.exit_codes.ERROR_IMAGINARY_FREQUENCIES """
 
     def run_relax(self):
         """Run the PwRelaxWorkChain to run a relax PwCalculation."""
         inputs = self.ctx.relax_inputs
+
+        if self.ctx.iteration == 0:
+            self.ctx.kpoints_distance = inputs.base.kpoints_distance
+            self.ctx.etot_conv_thr = inputs.base.pw.parameters["CONTROL"][
+                "etot_conv_thr"
+            ]
+            self.ctx.forc_conv_thr = inputs.base.pw.parameters["CONTROL"][
+                "forc_conv_thr"
+            ]
+            self.ctx.conv_thr = inputs.base.pw.parameters.get_attribute(
+                "ELECTRONS"
+            )["conv_thr"]
+        else:
+            inputs.base.kpoints_distance = self.ctx.kpoints_distance
+            inputs.base.pw.parameters["CONTROL"][
+                "etot_conv_thr"
+            ] = self.ctx.etot_conv_thr
+            inputs.base.pw.parameters["CONTROL"][
+                "forc_conv_thr"
+            ] = self.ctx.forc_conv_thr
+            inputs.base.pw.parameters["ELECTRONS"][
+                "conv_thr"
+            ] = self.ctx.conv_thr
+
         inputs.metadata.call_link_label = "relax"
         inputs.structure = self.ctx.current_structure
 
@@ -299,7 +343,15 @@ class MatdynRestartWorkChain(WorkChain):
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_RELAX
 
+        # get conv_thr
+        pwbase = workchain.called[-1]
+        pwcalc = pwbase.called[-1]
+        self.ctx.conv_thr = pwcalc.inputs.parameters.get_attribute("ELECTRONS")[
+            "conv_thr"
+        ]
+
         self.ctx.current_structure = workchain.outputs.output_structure
+        self.ctx.current_folder = workchain.outputs.remote_folder
         self.out("output_relax_structure", self.ctx.current_structure)
 
     def should_run_scf(self):
@@ -321,10 +373,35 @@ class MatdynRestartWorkChain(WorkChain):
     def run_scf(self):
         """Run the PwBaseWorkChain in scf mode on the primitive cell of input structure."""
         inputs = self.ctx.scf_inputs
+
+        if self.ctx.iteration == 0 and "relax" not in self.inputs:
+            self.ctx.kpoints_distance = inputs.kpoints_distance
+            self.ctx.etot_conv_thr = inputs.pw.parameters["CONTROL"][
+                "etot_conv_thr"
+            ]
+            self.ctx.forc_conv_thr = inputs.pw.parameters["CONTROL"][
+                "forc_conv_thr"
+            ]
+            self.ctx.conv_thr = inputs.pw.parameters.get_attribute("ELECTRONS")[
+                "conv_thr"
+            ]
+        else:
+            inputs.kpoints_distance = self.ctx.kpoints_distance
+            inputs.pw.parameters["CONTROL"][
+                "etot_conv_thr"
+            ] = self.ctx.etot_conv_thr
+            inputs.pw.parameters["CONTROL"][
+                "forc_conv_thr"
+            ] = self.ctx.forc_conv_thr
+            inputs.pw.parameters["ELECTRONS"]["conv_thr"] = self.ctx.conv_thr
+
         inputs.metadata.call_link_label = "scf"
         inputs.pw.structure = self.ctx.current_structure
         inputs.pw.parameters = inputs.pw.parameters.get_dict()
         inputs.pw.parameters.setdefault("CONTROL", {})["calculation"] = "scf"
+        inputs.pw.parameters.setdefault("ELECTRONS", {})[
+            "conv_thr"
+        ] = self.ctx.conv_thr
 
         # Make sure to carry the number of bands from the relax workchain if it was run and it wasn't explicitly defined
         # in the inputs. One of the base workchains in the relax workchain may have changed the number automatically in
@@ -334,6 +411,7 @@ class MatdynRestartWorkChain(WorkChain):
         #         'nbnd', self.ctx.current_number_of_bands)
 
         inputs = prepare_process_inputs(PwBaseWorkChain, inputs)
+        self.ctx.scf_inputs = inputs
         running = self.submit(PwBaseWorkChain, **inputs)
 
         self.report(
@@ -373,10 +451,16 @@ class MatdynRestartWorkChain(WorkChain):
     def run_ph(self):
         """Run the PhBaseWorkChain."""
         inputs = self.ctx.ph_inputs
+
+        if self.ctx.iteration == 0:
+            self.ctx.tr2_ph = inputs.ph.parameters["INPUTPH"]["tr2_ph"]
+        else:
+            inputs.ph.parameters["INPUTPH"]["tr2_ph"] = self.ctx.conv_thr
+
         inputs.ph.parent_folder = self.ctx.current_folder
         inputs.ph.parameters = inputs.ph.parameters.get_dict()
 
-        if self.iteration == 0:
+        if self.ctx.iteration == 0:
             if "qpoints" in inputs.ph:
                 inputs.ph.qpoints = inputs.ph.qpoints
             else:
@@ -387,6 +471,7 @@ class MatdynRestartWorkChain(WorkChain):
                 )
 
         inputs = prepare_process_inputs(PhBaseWorkChain, inputs)
+        self.ctx.ph_inputs = inputs
         running = self.submit(PhBaseWorkChain, **inputs)
 
         self.report(
@@ -413,30 +498,20 @@ class MatdynRestartWorkChain(WorkChain):
                     )
                 )
                 # increase conv_thr if restarted
-                conv_thr = self.ctx.relax_inputs.base.pw.parameters[
-                    "ELECTRONS"
-                ]["conv_thr"]
-                self.ctx.relax_inputs.base.pw.parameters["ELECTRONS"][
-                    "conv_thr"
-                ] = (conv_thr / 10)
-                self.ctx.relax_inputs.base.pw.parameters["CONTROL"][
-                    "etot_conv_thr"
-                ] = (conv_thr / 100)
-                self.ctx.relax_inputs.base.pw.parameters["CONTROL"][
-                    "forc_conv_thr"
-                ] = (conv_thr / 100)
-                self.ctx.scf_inputs.pw.parameters["ELECTRONS"]["conv_thr"] = (
-                    conv_thr / 10
-                )
-                self.ctx.scf_inputs.pw.parameters["CONTROL"][
-                    "etot_conv_thr"
-                ] = (conv_thr / 100)
-                self.ctx.scf_inputs.pw.parameters["CONTROL"][
-                    "forc_conv_thr"
-                ] = (conv_thr / 100)
+                self.ctx.kpoints_distance *= 0.75
+                self.ctx.conv_thr *= 0.01
+                self.ctx.etot_conv_thr *= 0.01
+                self.ctx.forc_conv_thr *= 0.01
                 # increase tr2_ph if restarted
-                self.ctx.ph_inputs.ph.parameters["INPUTPH"]["tr2_ph"] = (
-                    self.ctx.ph_inputs.ph.parameters["INPUTPH"]["tr2_ph"] / 100
+                self.ctx.tr2_ph *= 0.01
+                self.report(
+                    "The current kpoints_distance {}, conv_thr {}, etot_conv_thr {}, forc_conv_thr {}, tr2_ph {}.".format(
+                        self.ctx.kpoints_distance,
+                        self.ctx.conv_thr,
+                        self.ctx.etot_conv_thr,
+                        self.ctx.forc_conv_thr,
+                        self.ctx.tr2_ph,
+                    )
                 )
                 return
             else:
@@ -553,6 +628,12 @@ class MatdynRestartWorkChain(WorkChain):
 
     def results(self):
         """Attach the desired output nodes directly as outputs of the workchain."""
+        if not self.check_ph_status_ok():
+            if self.ctx.iteration >= self.inputs.max_restart_iterations.value:
+                self.report("maximum number of restart iterations exceeded")
+                return self.exit_codes.ERROR_IMAGINARY_FREQUENCIES
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_PH
+
         self.report("workchain succesfully completed")
         try:
             self.ctx.workchain_scf

@@ -215,9 +215,11 @@ class PwBandStructureWorkChain(WorkChain):
             inputs['relax'] = get_relax_inputs()
             inputs.relax.base.kpoints_distance = orm.Float(
                 self.ctx.protocol['kpoints_mesh_density'])
-
-        inputs.scf.kpoints_distance = orm.Float(
-            self.ctx.protocol['kpoints_mesh_density'])
+        if "kpoints" in self.inputs:
+            inputs.scf.kpoints = self.inputs.kpoints
+        else:
+            inputs.scf.kpoints_distance = orm.Float(
+                self.ctx.protocol['kpoints_mesh_density'])
         inputs.bands.kpoints_distance = orm.Float(
             self.ctx.protocol['kpoints_distance_for_bands'])
 

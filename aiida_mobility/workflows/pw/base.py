@@ -19,7 +19,10 @@ from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance i
 )
 from aiida_quantumespresso.common.types import ElectronicType, SpinType
 from aiida_quantumespresso.utils.defaults.calculation import pw as qe_defaults
-from aiida_quantumespresso.utils.mapping import update_mapping, prepare_process_inputs
+from aiida_quantumespresso.utils.mapping import (
+    update_mapping,
+    prepare_process_inputs,
+)
 from aiida_quantumespresso.utils.pseudopotential import (
     validate_and_prepare_pseudos_inputs,
 )
@@ -180,15 +183,23 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         type_check(electronic_type, ElectronicType)
         type_check(spin_type, SpinType)
 
-        if electronic_type not in [ElectronicType.METAL, ElectronicType.INSULATOR]:
+        if electronic_type not in [
+            ElectronicType.METAL,
+            ElectronicType.INSULATOR,
+        ]:
             raise NotImplementedError(
                 f"electronic type `{electronic_type}` is not supported."
             )
 
         if spin_type not in [SpinType.NONE, SpinType.COLLINEAR]:
-            raise NotImplementedError(f"spin type `{spin_type}` is not supported.")
+            raise NotImplementedError(
+                f"spin type `{spin_type}` is not supported."
+            )
 
-        if initial_magnetic_moments is not None and spin_type is not SpinType.COLLINEAR:
+        if (
+            initial_magnetic_moments is not None
+            and spin_type is not SpinType.COLLINEAR
+        ):
             raise ValueError(
                 f"`initial_magnetic_moments` is specified but spin type `{spin_type}` is incompatible."
             )
@@ -239,7 +250,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             )
 
             parameters["SYSTEM"]["nspin"] = 2
-            parameters["SYSTEM"]["starting_magnetization"] = starting_magnetization
+            parameters["SYSTEM"][
+                "starting_magnetization"
+            ] = starting_magnetization
 
         builder.pw["code"] = code  # pylint: disable=no-member
         builder.pw["pseudos"] = pseudo_family.get_pseudos(
@@ -264,7 +277,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         super().setup()
         self.ctx.restart_calc = None
-        self.ctx.inputs = AttributeDict(self.exposed_inputs(PwCalculation, "pw"))
+        self.ctx.inputs = AttributeDict(
+            self.exposed_inputs(PwCalculation, "pw")
+        )
         self.ctx.set_2d_mesh = self.inputs.set_2d_mesh.value
 
     def validate_parameters(self):
@@ -275,7 +290,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         self.ctx.inputs.parameters = self.ctx.inputs.parameters.get_dict()
         self.ctx.inputs.settings = (
-            self.ctx.inputs.settings.get_dict() if "settings" in self.ctx.inputs else {}
+            self.ctx.inputs.settings.get_dict()
+            if "settings" in self.ctx.inputs
+            else {}
         )
 
         if "parent_folder" in self.ctx.inputs:
@@ -291,7 +308,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         the case of the latter, the `KpointsData` will be constructed for the input `StructureData` using the
         `create_kpoints_from_distance` calculation function.
         """
-        if all([key not in self.inputs for key in ["kpoints", "kpoints_distance"]]):
+        if all(
+            [key not in self.inputs for key in ["kpoints", "kpoints_distance"]]
+        ):
             return self.exit_codes.ERROR_INVALID_INPUT_KPOINTS
 
         try:
@@ -351,15 +370,17 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
 
         # If automatic parallelization is not enabled, we better make sure that the options satisfy minimum requirements
         if "automatic_parallelization" not in self.inputs:
-            num_machines = self.ctx.inputs.metadata.options.get("resources", {}).get(
-                "num_machines", None
-            )
+            num_machines = self.ctx.inputs.metadata.options.get(
+                "resources", {}
+            ).get("num_machines", None)
             max_wallclock_seconds = self.ctx.inputs.metadata.options.get(
                 "max_wallclock_seconds", None
             )
 
             if num_machines is None or max_wallclock_seconds is None:
-                return self.exit_codes.ERROR_INVALID_INPUT_RESOURCES_UNDERSPECIFIED
+                return (
+                    self.exit_codes.ERROR_INVALID_INPUT_RESOURCES_UNDERSPECIFIED
+                )
 
             self.set_max_seconds(max_wallclock_seconds)
 
@@ -397,7 +418,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             "target_time_seconds",
             "max_num_machines",
         ]
-        received_keys = [(key, parallelization.get(key, None)) for key in expected_keys]
+        received_keys = [
+            (key, parallelization.get(key, None)) for key in expected_keys
+        ]
         remaining_keys = [
             key for key in parallelization.keys() if key not in expected_keys
         ]
@@ -425,14 +448,18 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             "max_wallclock_seconds": parallelization["max_wallclock_seconds"],
             "target_time_seconds": parallelization["target_time_seconds"],
             "max_num_machines": parallelization["max_num_machines"],
-            "calculation_mode": self.ctx.inputs.parameters["CONTROL"]["calculation"],
+            "calculation_mode": self.ctx.inputs.parameters["CONTROL"][
+                "calculation"
+            ],
         }
 
         options = self.ctx.inputs.metadata["options"]
         options.setdefault("resources", {})["num_machines"] = parallelization[
             "max_num_machines"
         ]
-        options["max_wallclock_seconds"] = parallelization["max_wallclock_seconds"]
+        options["max_wallclock_seconds"] = parallelization[
+            "max_wallclock_seconds"
+        ]
 
     def run_init(self):
         """Run an initialization `PwCalculation` that will exit after the preamble.
@@ -452,7 +479,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         inputs = prepare_process_inputs(PwCalculation, inputs)
         running = self.submit(PwCalculation, **inputs)
 
-        self.report(f"launching initialization {running.pk}<{self.ctx.process_name}>")
+        self.report(
+            f"launching initialization {running.pk}<{self.ctx.process_name}>"
+        )
 
         return ToContext(calculation_init=running)
 
@@ -508,9 +537,13 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         if self.ctx.restart_calc:
             self.ctx.inputs.parameters["CONTROL"]["restart_mode"] = "restart"
-            self.ctx.inputs.parent_folder = self.ctx.restart_calc.outputs.remote_folder
+            self.ctx.inputs.parent_folder = (
+                self.ctx.restart_calc.outputs.remote_folder
+            )
         else:
-            self.ctx.inputs.parameters["CONTROL"]["restart_mode"] = "from_scratch"
+            self.ctx.inputs.parameters["CONTROL"][
+                "restart_mode"
+            ] = "from_scratch"
             self.ctx.inputs.pop("parent_folder", None)
 
     def report_error_handled(self, calculation, action):
@@ -540,9 +573,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         """
         from aiida_quantumespresso.utils.bands import get_highest_occupied_band
 
-        occupations = calculation.inputs.parameters.get_attribute("SYSTEM", {}).get(
-            "occupations", None
-        )
+        occupations = calculation.inputs.parameters.get_attribute(
+            "SYSTEM", {}
+        ).get("occupations", None)
 
         if occupations is None:
             self.report(
@@ -570,9 +603,13 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         except ValueError as exception:
             args = [self.ctx.process_name, calculation.pk]
             self.report(
-                "{}<{}> run with smearing and highest band is occupied".format(*args)
+                "{}<{}> run with smearing and highest band is occupied".format(
+                    *args
+                )
             )
-            self.report(f"BandsData<{bands.pk}> has invalid occupations: {exception}")
+            self.report(
+                f"BandsData<{bands.pk}> has invalid occupations: {exception}"
+            )
             self.report(
                 f"{calculation.process_label}<{calculation.pk}> had insufficient bands"
             )
@@ -585,7 +622,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                 self.defaults.delta_minimum_nbnd,
             )
 
-            self.ctx.inputs.parameters.setdefault("SYSTEM", {})["nbnd"] = nbnd_new
+            self.ctx.inputs.parameters.setdefault("SYSTEM", {})[
+                "nbnd"
+            ] = nbnd_new
 
             self.report(
                 f"Action taken: increased number of bands to {nbnd_new} and restarting from scratch"
@@ -596,7 +635,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
     def handle_unrecoverable_failure(self, calculation):
         """Handle calculations with an exit status below 400 which are unrecoverable, so abort the work chain."""
         if calculation.is_failed and calculation.exit_status < 400:
-            self.report_error_handled(calculation, "unrecoverable error, aborting...")
+            self.report_error_handled(
+                calculation, "unrecoverable error, aborting..."
+            )
             return ProcessHandlerReport(
                 True, self.exit_codes.ERROR_UNRECOVERABLE_FAILURE
             )
@@ -660,7 +701,8 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         self.report_error_handled(calculation, action)
         self.results()  # Call the results method to attach the output nodes
         return ProcessHandlerReport(
-            True, self.exit_codes.ERROR_IONIC_CONVERGENCE_REACHED_EXCEPT_IN_FINAL_SCF
+            True,
+            self.exit_codes.ERROR_IONIC_CONVERGENCE_REACHED_EXCEPT_IN_FINAL_SCF,
         )
 
     @process_handler(
@@ -668,8 +710,8 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         exit_codes=[
             PwCalculation.exit_codes.ERROR_IONIC_CONVERGENCE_NOT_REACHED,
             PwCalculation.exit_codes.ERROR_IONIC_CYCLE_EXCEEDED_NSTEP,
-            PwCalculation.exit_codes.ERROR_IONIC_CYCLE_BFGS_HISTORY_FAILURE,
-            PwCalculation.exit_codes.ERROR_IONIC_CYCLE_BFGS_HISTORY_AND_FINAL_SCF_FAILURE,
+            # PwCalculation.exit_codes.ERROR_IONIC_CYCLE_BFGS_HISTORY_FAILURE,
+            # PwCalculation.exit_codes.ERROR_IONIC_CYCLE_BFGS_HISTORY_AND_FINAL_SCF_FAILURE,
         ],
     )
     def handle_relax_recoverable_ionic_convergence_error(self, calculation):
@@ -691,7 +733,9 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
             PwCalculation.exit_codes.ERROR_IONIC_CONVERGENCE_REACHED_FINAL_SCF_FAILED,
         ],
     )
-    def handle_relax_recoverable_electronic_convergence_error(self, calculation):
+    def handle_relax_recoverable_electronic_convergence_error(
+        self, calculation
+    ):
         """Handle various exit codes for recoverable `relax` calculations with failed electronic convergence.
 
         These exit codes signify that the electronic convergence thresholds were not met, but the output structure is
@@ -710,10 +754,61 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         self.ctx.inputs.structure = calculation.outputs.output_structure
         action = (
             "no electronic convergence but clean shutdown: reduced beta mixing from {} to {} restarting from "
-            "scratch but using output structure.".format(mixing_beta, mixing_beta_new)
+            "scratch but using output structure.".format(
+                mixing_beta, mixing_beta_new
+            )
         )
         self.report_error_handled(calculation, action)
         return ProcessHandlerReport(True)
+
+    @process_handler(
+        priority=540,
+        exit_codes=[
+            PwCalculation.exit_codes.ERROR_IONIC_CYCLE_BFGS_HISTORY_FAILURE,
+            PwCalculation.exit_codes.ERROR_IONIC_CYCLE_BFGS_HISTORY_AND_FINAL_SCF_FAILURE,
+        ],
+    )
+    def handle_ionic_cycle_bfgs_history_failure_error(self, calculation):
+        self.ctx.inputs.structure = calculation.outputs.output_structure
+        # ######################################################################
+        # increase conv_thr if restarted
+        conv_thr = self.ctx.inputs.parameters["ELECTRONS"]["conv_thr"]
+        # etot_conv_thr = self.ctx.inputs.parameters["CONTROL"]["etot_conv_thr"]
+        # forc_conv_thr = self.ctx.inputs.parameters["CONTROL"]["forc_conv_thr"]
+        # self.ctx.inputs.parameters["ELECTRONS"]["conv_thr"] = conv_thr / 10
+        # self.ctx.inputs.parameters["CONTROL"]["etot_conv_thr"] = (
+        #     etot_conv_thr / 100
+        # )
+        # self.ctx.inputs.parameters["CONTROL"]["forc_conv_thr"] = (
+        #     forc_conv_thr / 100
+        # )
+        # action = "bfgs history already reset at previous step. Try to reduce conv_thr {}, etot_conv_thr {}, forc_conv_thr {} if youare not happy with the result...".format(
+        #     conv_thr, etot_conv_thr, forc_conv_thr
+        # )
+        # ######################################################################
+        # use the estimated accurate
+        # conv_thr = calculation.outputs.output_parameters.get_attribute(
+        #     "energy_accuracy"
+        # )
+        # self.ctx.inputs.parameters["ELECTRONS"]["conv_thr"] = conv_thr
+        action = "bfgs history already reset at previous step. Try to reduce current conv_thr {} if you are not happy with the result...".format(
+            conv_thr
+        )
+        # if self.should_run_process():
+        #     self.report_error_handled(calculation, action)
+        #     return ProcessHandlerReport(True)
+        # else:
+        #     self.ctx.is_finished = True
+
+        # ######################################################################
+        # ignored
+        # if "bfgs_error_restarted" in self.ctx and self.ctx.bfgs_error_restarted:
+        #     self.ctx.is_finished = True
+        # else:
+        #     self.ctx.bfgs_error_restarted = True
+        #     self.report_error_handled(calculation, action)
+        #     return ProcessHandlerReport(True)
+        self.ctx.is_finished = True
 
     @process_handler(
         priority=410,

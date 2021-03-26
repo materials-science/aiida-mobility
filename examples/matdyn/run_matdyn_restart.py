@@ -6,6 +6,7 @@ from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
 from aiida_mobility.utils.protocols.pw import ProtocolManager
 from aiida_mobility.utils import (
     add_to_group,
+    input_pw_parameters_helper,
     print_help,
     read_structure,
     write_pk_to_file,
@@ -42,11 +43,17 @@ def parse_arugments():
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0' and 'testing'",
-        default="theos-ht-1.0",
+        help="available protocols are 'theos-ht-1.0', 'td-1.0', and 'testing'",
+        default="td-1.0",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
+    parser.add_argument(
+        "--kpoints-mesh",
+        nargs=3,
+        type=int,
+        help="The number of points in the kpoint mesh along each basis vector.",
+    )
     parser.add_argument(
         "--cutoffs",
         type=float,
@@ -55,7 +62,7 @@ def parse_arugments():
         help="should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc",
     )
     parser.add_argument(
-        "--set_2d_mesh",
+        "--set-2d-mesh",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
@@ -68,13 +75,43 @@ def parse_arugments():
     )
     # ph parameters
     parser.add_argument(
-        "--tr2_ph", type=float, help="tr2_ph, default is 1.0e-8", default=1.0e-8
+        "--tr2_ph",
+        type=float,
+        help="tr2_ph, default is 1.0e-15",
+        default=1.0e-15,
     )
     parser.add_argument(
-        "--epsil", type=bool, help="epsil, default is True", default=True
+        "--check-imaginary-frequencies",
+        default=False,
+        help="Whether to check imaginary frequencies.",
+        action="store_true",
     )
     parser.add_argument(
-        "--qpoints_distance",
+        "--frequency-threshold",
+        type=float,
+        help="frequency_threshold, default is -20",
+        default=-20,
+    )
+    parser.add_argument(
+        "--separated-qpoints",
+        default=False,
+        action="store_true",
+        help="Set true if you want to calculate each qpoint separately.",
+    )
+    parser.add_argument(
+        "--epsil",
+        help="epsil, default is False",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--qpoints-mesh",
+        nargs=3,
+        type=int,
+        help="The number of points in the qpoint mesh along each basis vector.",
+    )
+    parser.add_argument(
+        "--qpoints-distance",
         type=float,
         help="qpoint distance to get qpoints, default is 0.2",
         default=0.2,
@@ -100,22 +137,28 @@ def parse_arugments():
         help="default is `crystal`, optionals are `no`, `simple`, `one-dim`, `zero-dim`",
     )
     parser.add_argument(
-        "--matdyn_distance",
+        "--matdyn-distance",
         type=float,
         help="kpoint distance to get kpoints, default is 0.01",
         default=0.01,
     )
     parser.add_argument(
-        "-N", "--num_machines", type=int, help="number of machines", default=1
+        "-N", "--num-machines", type=int, help="number of machines", default=1
     )
     parser.add_argument(
         "-P",
-        "--num_mpiprocs_per_machine",
+        "--num-mpiprocs-per-machine",
         type=int,
         help="number of mpiprocs per machine",
         default=8,
     )
     parser.add_argument("-C", "--computer", type=str, default="qe")
+    parser.add_argument(
+        "--max-restart-iterations",
+        type=int,
+        help="max_restart_iterations",
+        default=1,
+    )
     parser.add_argument(
         "-D",
         "--daemon",
@@ -124,7 +167,7 @@ def parse_arugments():
         help="Run with submit",
     )
     parser.add_argument(
-        "--group_name",
+        "--group-name",
         type=str,
         help="Add this task to Group",
         default="ph_workflow",
@@ -196,6 +239,7 @@ def get_pw_common_inputs(
     set_2d_mesh,
     num_machines,
     num_mpiprocs_per_machine,
+    mode="scf",
 ):
     # get cutoff
     ecutwfc = []
@@ -228,34 +272,45 @@ def get_pw_common_inputs(
                 )
 
     number_of_atoms = len(structure.sites)
-    pw_parameters = {
-        "CONTROL": {
-            "restart_mode": "from_scratch",
-            "tstress": protocol["tstress"],
-            "tprnfor": protocol["tprnfor"],
-            "etot_conv_thr": protocol["convergence_threshold_per_atom"]
-            * number_of_atoms
-            * 10,
-            "forc_conv_thr": protocol["convergence_threshold_per_atom"]
-            * number_of_atoms
-            * 10,
-        },
-        "SYSTEM": {
-            "ecutwfc": max(ecutwfc),
-            "ecutrho": max(ecutrho),
-        },
-        "ELECTRONS": {
-            "conv_thr": protocol["convergence_threshold_per_atom"]
-            * number_of_atoms,
-        },
-    }
+    prepare_for_parameters = protocol
+    prepare_for_parameters["ecutwfc"] = max(ecutwfc)
+    prepare_for_parameters["ecutrho"] = max(ecutrho)
+    prepare_for_parameters["conv_thr"] = (
+        protocol["convergence_threshold_per_atom"] * number_of_atoms
+    )
+    # if "smearing" in protocol:
+    #     prepare_for_parameters["smearing"] = protocol["smearing"]
+    # if "degauss" in protocol:
+    #     prepare_for_parameters["degauss"] = protocol["degauss"]
+    # if "occupations" in protocol:
+    #     prepare_for_parameters["occupations"] = protocol["occupations"]
 
-    if "smearing" in protocol:
-        pw_parameters["SYSTEM"]["smearing"] = protocol["smearing"]
-    if "degauss" in protocol:
-        pw_parameters["SYSTEM"]["degauss"] = protocol["degauss"]
-    if "occupations" in protocol:
-        pw_parameters["SYSTEM"]["occupations"] = protocol["occupations"]
+    pw_parameters = input_pw_parameters_helper(mode, prepare_for_parameters)
+
+    # pw_parameters = {
+    #     "CONTROL": {
+    #         "restart_mode": "from_scratch",
+    #         "tstress": protocol["tstress"],
+    #         "tprnfor": protocol["tprnfor"],
+    #         "etot_conv_thr": protocol["etot_conv_thr"],
+    #         "forc_conv_thr": protocol["forc_conv_thr"],
+    #     },
+    #     "SYSTEM": {
+    #         "ecutwfc": max(ecutwfc),
+    #         "ecutrho": max(ecutrho),
+    #     },
+    #     "ELECTRONS": {
+    #         "conv_thr": protocol["convergence_threshold_per_atom"]
+    #         * number_of_atoms,
+    #     },
+    # }
+
+    # if "smearing" in protocol:
+    #     pw_parameters["SYSTEM"]["smearing"] = protocol["smearing"]
+    # if "degauss" in protocol:
+    #     pw_parameters["SYSTEM"]["degauss"] = protocol["degauss"]
+    # if "occupations" in protocol:
+    #     pw_parameters["SYSTEM"]["occupations"] = protocol["occupations"]
 
     inputs = AttributeDict(
         {
@@ -263,7 +318,8 @@ def get_pw_common_inputs(
                 "code": orm.load_code(pw_code),
                 "parameters": orm.Dict(dict=pw_parameters),
                 "metadata": {},
-            }
+            },
+            # "max_iterations": orm.Int(5),
         }
     )
 
@@ -306,11 +362,16 @@ def submit_workchain(
     protocol,
     pseudos,
     pseudo_family,
+    kpoints_mesh,
     cutoffs,
     set_2d_mesh,
     run_relax,
     tr2_ph,
+    check_imaginary_frequencies,
+    frequency_threshold,
+    separated_qpoints,
     epsil,
+    qpoints_mesh,
     qpoints_distance,
     walltime,
     zasr,
@@ -322,6 +383,7 @@ def submit_workchain(
     ph_code,
     q2r_code,
     matdyn_code,
+    max_restart_iterations,
     daemon,
     group_name,
 ):
@@ -335,7 +397,10 @@ def submit_workchain(
         structure, scf_parameters_name, protocol, pseudos
     )
 
-    workchain_parameters = {"structure": structure}
+    workchain_parameters = {
+        "structure": structure,
+        "max_restart_iterations": orm.Int(max_restart_iterations),
+    }
 
     scf_parameters = get_pw_common_inputs(
         structure,
@@ -348,6 +413,15 @@ def submit_workchain(
         num_machines,
         num_mpiprocs_per_machine,
     )
+    if kpoints_mesh is not None:
+        try:
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(kpoints_mesh)
+            scf_parameters["kpoints"] = kpoints
+        except ValueError as exception:
+            raise SystemExit(
+                f"failed to create a KpointsData mesh out of {kpoints_mesh}\n{exception}"
+            )
     workchain_parameters["scf"] = scf_parameters
 
     if run_relax:
@@ -362,9 +436,11 @@ def submit_workchain(
                 set_2d_mesh,
                 num_machines,
                 num_mpiprocs_per_machine,
+                mode="vc-relax",
             ),
             "relaxation_scheme": orm.Str("vc-relax"),
             "meta_convergence": orm.Bool(protocol["meta_convergence"]),
+            # "max_meta_convergence_iterations": orm.Int(10),
             "volume_convergence": orm.Float(protocol["volume_convergence"]),
         }
         parameters = relax_parameters["base"]["pw"]["parameters"].get_dict()
@@ -377,12 +453,7 @@ def submit_workchain(
     ph_calculation_parameters = {
         "code": orm.Code.get_from_string(ph_code),
         "parameters": orm.Dict(
-            dict={
-                "INPUTPH": {
-                    "tr2_ph": tr2_ph,
-                    "epsil": epsil,
-                }
-            }
+            dict={"INPUTPH": {"tr2_ph": tr2_ph, "epsil": epsil, "lqdir": True}}
         ),
         "metadata": {
             "options": get_options(
@@ -390,8 +461,23 @@ def submit_workchain(
             )
         },
     }
-    workchain_parameters["ph"] = {"ph": ph_calculation_parameters}
-    workchain_parameters["qpoints_distance"] = orm.Float(qpoints_distance)
+    workchain_parameters["ph"] = {
+        "ph": ph_calculation_parameters,
+        "check_imaginary_frequencies": orm.Bool(check_imaginary_frequencies),
+        "frequency_threshold": orm.Float(frequency_threshold),
+        "separated_qpoints": orm.Bool(separated_qpoints),
+    }
+    if qpoints_mesh is not None:
+        try:
+            qpoints = orm.KpointsData()
+            qpoints.set_kpoints_mesh(qpoints_mesh)
+            workchain_parameters["qpoints"] = qpoints
+        except ValueError as exception:
+            raise SystemExit(
+                f"failed to create a KpointsData mesh out of {qpoints_mesh}\n{exception}"
+            )
+    else:
+        workchain_parameters["qpoints_distance"] = orm.Float(qpoints_distance)
     workchain_parameters["set_2d_mesh"] = orm.Bool(set_2d_mesh)
 
     q2r_calculation_parameters = {
@@ -435,11 +521,16 @@ if __name__ == "__main__":
         args.protocol,
         args.pseudos,
         args.pseudo_family,
+        args.kpoints_mesh,
         args.cutoffs,
         args.set_2d_mesh,
         args.run_relax,
         args.tr2_ph,
+        args.check_imaginary_frequencies,
+        args.frequency_threshold,
+        args.separated_qpoints,
         args.epsil,
+        args.qpoints_mesh,
         args.qpoints_distance,
         args.walltime,
         args.zasr,
@@ -451,6 +542,7 @@ if __name__ == "__main__":
         str_ph,
         str_q2r,
         str_matdyn,
+        args.max_restart_iterations,
         args.daemon,
         args.group_name,
     )

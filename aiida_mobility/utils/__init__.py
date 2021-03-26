@@ -94,3 +94,64 @@ def constr2dpath(kpath3d, **kpath3ddict):
     kpathdict = dict({"labels": labels, "label_numbers": label_numbers})
 
     return kpath, kpathdict
+
+
+def input_pw_parameters_helper(mode, inputs):
+    # TODO: Add ALL Parameters
+    _control = [
+        "restart_mode",
+        "tstress",
+        "tprnfor",
+        "etot_conv_thr",
+        "forc_conv_thr",
+        "nstep",
+    ]
+    _system = [
+        "ecutwfc",
+        "ecutrho",
+        "smearing",
+        "degauss",
+        "occupations",
+        "assume_isolated",
+        "vdw_corr",
+    ]
+    _electron = [
+        "conv_thr",
+        "mixing_beta",
+        "mixing_ndim",
+        "mixing_mode",
+        "electron_maxstep",
+        "scf_must_converge",
+        "diago_full_acc",
+    ]
+    _ions = ["trust_radius_min"]
+    _cell = ["press", "press_conv_thr", "cell_dofree"]
+    con = {}
+    sys = {}
+    ele = {}
+    ions = {}
+    cell = {}
+    for key in inputs.keys():
+        if key in _control:
+            con[key] = inputs[key]
+        elif key in _system:
+            sys[key] = inputs[key]
+        elif key in _electron:
+            ele[key] = inputs[key]
+        elif key in _ions:
+            ions[key] = inputs[key]
+        elif key in _cell and (mode == "vc-relax" or mode == "vc-md"):
+            cell[key] = inputs[key]
+        # else:
+        #     raise SystemError('Error: Invalid Input Parameters In input_helper ', key)
+    parameters = {}
+    if con:
+        parameters["CONTROL"] = con
+    if sys:
+        parameters["SYSTEM"] = sys
+    if ele:
+        parameters["ELECTRONS"] = ele
+    if cell:
+        parameters["CELL"] = cell
+
+    return parameters

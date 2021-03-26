@@ -37,10 +37,28 @@ def parse_arugments():
         help="pk of scf calculation or pk of last ph node",
     )
     parser.add_argument(
-        "--tr2_ph", type=float, help="tr2_ph, default is 1.0e-8", default=1.0e-8
+        "--node_mode",
+        default=False,
+        help="whether the mode of parent calculation is scf.",
+        action="store_true",
     )
     parser.add_argument(
-        "--epsil", type=bool, help="epsil, default is True", default=True
+        "--tr2_ph",
+        type=float,
+        help="tr2_ph, default is 1.0e-15",
+        default=1.0e-15,
+    )
+    parser.add_argument(
+        "--qpoints",
+        nargs=3,
+        type=int,
+        help="The number of points in the qpoint mesh along each basis vector.",
+    )
+    parser.add_argument(
+        "--epsil",
+        help="epsil, default is False",
+        default=False,
+        action="store_true",
     )
     parser.add_argument(
         "--distance",
@@ -58,7 +76,25 @@ def parse_arugments():
         "--start_test",
         default=False,
         action="store_true",
-        help="Only calculate the first point.",
+        help="Only calculate the first point. The separated_qpoints will be True",
+    )
+    parser.add_argument(
+        "--check_imaginary_frequencies",
+        default=False,
+        help="Whether to check imaginary frequencies.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--frequency_threshold",
+        type=float,
+        help="imaginary_frequency_threshold, default is -20",
+        default=-20,
+    )
+    parser.add_argument(
+        "--separated_qpoints",
+        default=False,
+        action="store_true",
+        help="Set true if you want to calculate each qpoint separately.",
     )
     parser.add_argument(
         "-N", "--num_machines", type=int, help="number of machines", default=1
@@ -97,11 +133,16 @@ def parse_arugments():
 def submit_workchain(
     structure_file,
     node,
+    node_mode,
+    qpoints,
     tr2_ph,
     epsil,
     distance,
     set_2d_mesh,
     start_test,
+    check_imaginary_frequencies,
+    frequency_threshold,
+    separated_qpoints,
     num_machines,
     num_mpiprocs_per_machine,
     walltime,
@@ -123,18 +164,25 @@ def submit_workchain(
         raise SystemError("Cannot get remote folder from Node {}.".format(node))
 
     structure = read_structure(structure_file)
-    kpoints = create_kpoints(structure, distance, set_2d_mesh)
+    if qpoints is not None:
+        try:
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(qpoints)
+        except ValueError as exception:
+            raise SystemExit(
+                f"failed to create a KpointsData mesh out of {qpoints}\n{exception}"
+            )
+    else:
+        kpoints = create_kpoints(structure, distance, set_2d_mesh)
 
     inputph_parameters = {
-        "INPUTPH": {
-            "tr2_ph": tr2_ph,
-            "epsil": epsil,
-        }
+        "INPUTPH": {"tr2_ph": tr2_ph, "epsil": epsil, "lqdir": True}
     }
 
     if start_test:
         inputph_parameters["INPUTPH"]["start_q"] = 1
         inputph_parameters["INPUTPH"]["last_q"] = 1
+        separated_qpoints = True
 
     ph_calculation_parameters = {
         "ph": {
@@ -152,7 +200,11 @@ def submit_workchain(
                     "withmpi": True,
                 },
             },
-        }
+        },
+        "check_imaginary_frequencies": orm.Bool(check_imaginary_frequencies),
+        "separated_qpoints": orm.Bool(separated_qpoints),
+        "frequency_threshold": orm.Float(frequency_threshold),
+        "parent_scf_node_mode": orm.Bool(node_mode),
     }
 
     if daemon is not None:
@@ -171,11 +223,16 @@ if __name__ == "__main__":
     submit_workchain(
         args.structure,
         args.node,
+        args.node_mode,
+        args.qpoints,
         args.tr2_ph,
         args.epsil,
         args.distance,
         args.set_2d_mesh,
         args.start_test,
+        args.check_imaginary_frequencies,
+        args.frequency_threshold,
+        args.separated_qpoints,
         args.num_machines,
         args.num_mpiprocs_per_machine,
         args.walltime,

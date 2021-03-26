@@ -47,6 +47,12 @@ def parse_argugments():
     )
     pseudos_group.add_argument("--pseudo-family", help="pseudo family name")
     parser.add_argument(
+        "--kpoints-mesh",
+        nargs=3,
+        type=int,
+        help="The number of points in the kpoint mesh along each basis vector.",
+    )
+    parser.add_argument(
         "--cutoffs",
         type=float,
         nargs=2,
@@ -58,6 +64,12 @@ def parse_argugments():
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
+    )
+    parser.add_argument(
+        "--run-relax",
+        default=False,
+        help="Whether to run relax before scf.",
+        action="store_true",
     )
     parser.add_argument(
         "-N", "--num_machines", type=int, help="number of machines", default=1
@@ -113,10 +125,12 @@ def submit_workchain(
     parameters,
     pseudo_family,
     pseudos,
+    run_relax,
     num_machines,
-    num_mpiprocs_per_machine=4,
-    set_2d_mesh=False,
-    cutoffs=None,
+    num_mpiprocs_per_machine,
+    set_2d_mesh,
+    cutoffs,
+    kpoints_mesh,
 ):
     print(
         "running dft band structure calculation for {}".format(
@@ -190,10 +204,23 @@ def submit_workchain(
     if pseudo_family is not None:
         pwbands_workchain_parameters["pseudo_family"] = orm.Str(pseudo_family)
 
+    if kpoints_mesh is not None:
+        try:
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(kpoints_mesh)
+            pwbands_workchain_parameters["kpoints"] = kpoints
+        except ValueError as exception:
+            raise SystemExit(
+                f"failed to create a KpointsData mesh out of {args.kpoints_mesh}\n{exception}"
+            )
+
     if recommended_cutoffs is not None:
         pwbands_workchain_parameters["cutoffs"] = orm.Dict(
             dict=recommended_cutoffs
         )
+
+    if run_relax:
+        pwbands_workchain_parameters["should_run_relax"] = orm.Bool(run_relax)
 
     if daemon:
         dft_workchain = submit(
@@ -219,10 +246,12 @@ if __name__ == "__main__":
         args.parameters,
         args.pseudo_family,
         args.pseudos,
+        args.run_relax,
         args.num_machines,
         args.num_mpiprocs_per_machine,
         args.set_2d_mesh,
         args.cutoffs,
+        args.kpoints_mesh,
     )
 
     add_to_group(workchain, args.group_name)

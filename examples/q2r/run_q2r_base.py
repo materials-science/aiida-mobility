@@ -84,7 +84,9 @@ def submit_workchain(
         "q2r": {
             "code": orm.Code.get_from_string(q2r_code),
             "parent_folder": parent_folder,
-            "parameters": orm.Dict(dict={"INPUT": {"zasr": zasr}}),
+            "parameters": orm.Dict(
+                dict={"INPUT": {"zasr": zasr, "loto_2d": True}}
+            ),
             "metadata": {
                 "options": {
                     "resources": {

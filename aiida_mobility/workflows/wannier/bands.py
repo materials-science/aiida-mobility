@@ -10,6 +10,7 @@ from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis im
 from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
 from .wannier import Wannier90WorkChain
 from aiida_mobility.utils.protocols.pw import ProtocolManager
+from aiida_mobility.utils import input_pw_parameters_helper
 
 
 class Wannier90BandsWorkChain(WorkChain):
@@ -110,6 +111,12 @@ class Wannier90BandsWorkChain(WorkChain):
             help="[Deprecated: use `pw.pseudos` instead] An alternative to specifying the pseudo potentials manually in"
             " `pseudos`: one can specify the name of an existing pseudo potential family and the work chain will "
             "generate the pseudos automatically based on the input structure.",
+        )
+        spec.input(
+            "kpoints",
+            valid_type=orm.KpointsData,
+            required=False,
+            help="An explicit k-points list or mesh. Either this or `kpoints_distance` has to be provided.",
         )
         spec.input(
             "set_2d_mesh",
@@ -262,7 +269,14 @@ class Wannier90BandsWorkChain(WorkChain):
         result = seekpath_structure_analysis(
             self.inputs.structure, **seekpath_parameters
         )
-        self.ctx.current_structure = result["primitive_structure"]
+        ########################################################################
+        # seek path will transform the cells of some 2d structures
+        if (
+            "set_2d_mesh" not in self.inputs
+            or self.inputs.set_2d_mesh.value == False
+        ):
+            self.ctx.current_structure = result["primitive_structure"]
+        ########################################################################
         self.ctx.explicit_kpoints_path = result["explicit_kpoints"]
         # save kpoint_path for bands_plot
         self.ctx.kpoints_path = {
@@ -320,44 +334,30 @@ class Wannier90BandsWorkChain(WorkChain):
                     return self.exit_codes.ERROR_INVALID_INPUT_UNRECOGNIZED_KIND
 
         number_of_atoms = len(self.ctx.current_structure.sites)
-        pw_parameters = {
-            "CONTROL": {
-                "restart_mode": "from_scratch",
-                "tstress": self.ctx.protocol["tstress"],
-                "tprnfor": self.ctx.protocol["tprnfor"],
-                "etot_conv_thr": self.ctx.protocol[
-                    "convergence_threshold_per_atom"
-                ]
-                * number_of_atoms
-                * 10,
-                "forc_conv_thr": self.ctx.protocol[
-                    "convergence_threshold_per_atom"
-                ]
-                * number_of_atoms
-                * 10,
-            },
-            "SYSTEM": {
-                "ecutwfc": max(ecutwfc),
-                "ecutrho": max(ecutrho),
-                # 'smearing': self.ctx.protocol['smearing'],
-                # 'degauss': self.ctx.protocol['degauss'],
-                # 'occupations': self.ctx.protocol['occupations'],
-            },
-            "ELECTRONS": {
-                "conv_thr": self.ctx.protocol["convergence_threshold_per_atom"]
-                * number_of_atoms,
-            },
+        prepare_for_parameters = self.ctx.protocol
+        prepare_for_parameters["CONTROL"] = {
+            "restart_mode": "from_scratch",
+            "tstress": self.ctx.protocol["tstress"],
+            "tprnfor": self.ctx.protocol["tprnfor"],
         }
+        prepare_for_parameters["ecutwfc"] = max(ecutwfc)
+        prepare_for_parameters["ecutrho"] = max(ecutrho)
+        prepare_for_parameters["conv_thr"] = (
+            prepare_for_parameters["convergence_threshold_per_atom"]
+            * number_of_atoms
+        )
 
-        if "smearing" in self.ctx.protocol:
-            pw_parameters["SYSTEM"]["smearing"] = self.ctx.protocol["smearing"]
-        if "degauss" in self.ctx.protocol:
-            pw_parameters["SYSTEM"]["degauss"] = self.ctx.protocol["degauss"]
-        if "occupations" in self.ctx.protocol:
-            pw_parameters["SYSTEM"]["occupations"] = self.ctx.protocol[
-                "occupations"
-            ]
-
+        # if "smearing" in self.ctx.protocol:
+        #     pw_parameters["SYSTEM"]["smearing"] = self.ctx.protocol["smearing"]
+        # if "degauss" in self.ctx.protocol:
+        #     pw_parameters["SYSTEM"]["degauss"] = self.ctx.protocol["degauss"]
+        # if "occupations" in self.ctx.protocol:
+        #     pw_parameters["SYSTEM"]["occupations"] = self.ctx.protocol[
+        #         "occupations"
+        #     ]
+        pw_parameters = input_pw_parameters_helper(
+            "scf", prepare_for_parameters
+        )
         self.ctx.scf_parameters = orm.Dict(dict=pw_parameters)
 
     # we do not need this anymore, since now Wannier90WorkChain accepts input only_valence,
@@ -554,6 +554,9 @@ class Wannier90BandsWorkChain(WorkChain):
                 self.inputs.structure, known_pseudos
             )
 
+        if "kpoints" in self.inputs:
+            inputs["kpoints"] = self.inputs.kpoints
+
         if "set_2d_mesh" in self.inputs:
             inputs["set_2d_mesh"] = self.inputs.set_2d_mesh
 
@@ -726,14 +729,17 @@ class Wannier90BandsWorkChain(WorkChain):
             inputs.relax.base.kpoints_distance = orm.Float(
                 self.ctx.protocol["kpoints_mesh_density"]
             )
-
-        inputs.scf.kpoints_distance = orm.Float(
-            self.ctx.protocol["kpoints_mesh_density"]
-        )
-        # inputs.bands.kpoints_distance = orm.Float(self.ctx.protocol['kpoints_distance_for_bands'])
-        inputs.nscf.kpoints_distance = orm.Float(
-            self.ctx.protocol["kpoints_mesh_density"]
-        )
+        if "kpoints" in self.inputs:
+            inputs.scf.kpoints = self.inputs.kpoints
+            inputs.nscf.kpoints = self.inputs.kpoints
+        else:
+            inputs.scf.kpoints_distance = orm.Float(
+                self.ctx.protocol["kpoints_mesh_density"]
+            )
+            # inputs.bands.kpoints_distance = orm.Float(self.ctx.protocol['kpoints_distance_for_bands'])
+            inputs.nscf.kpoints_distance = orm.Float(
+                self.ctx.protocol["kpoints_mesh_density"]
+            )
 
         # num_bands_factor = self.ctx.protocol.get('num_bands_factor', None)
         # if num_bands_factor is not None:
