@@ -46,6 +46,12 @@ def parse_arugments():
         default=0.1,
     )
     parser.add_argument(
+        "--system-2d",
+        default=False,
+        action="store_true",
+        help="Set mesh to [x, x, 1]",
+    )
+    parser.add_argument(
         "-N", "--num_machines", type=int, help="number of machines", default=1
     )
     parser.add_argument(
@@ -78,22 +84,27 @@ def parse_arugments():
     return parser.parse_args()
 
 
-def gen_kpoints(structure, distance):
+def gen_kpoints(structure, distance, two_d=False):
     from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis import (
         seekpath_structure_analysis,
     )
+    from aiida_mobility.utils import constr2dpath
 
-    # seek_path
     inputs = {
         "reference_distance": distance,
         "metadata": {"call_link_label": "seekpath"},
     }
-    spres = seekpath_structure_analysis(structure, **inputs)
-    kpoints = spres["explicit_kpoints"]
-    listData = DataFactory("list")
-    xcoord = listData()
-    xcoord.set_list(spres["parameters"]["explicit_kpoints_linearcoord"])
-    kpoints.set_extra("xcoord", xcoord)
+    result = seekpath_structure_analysis(structure, **inputs)
+
+    kpath, kpathdict = constr2dpath(
+        result["explicit_kpoints"].get_kpoints(),
+        **result["explicit_kpoints"].attributes
+    )
+    kpoints = orm.KpointsData()
+    kpoints.set_kpoints(kpath)
+    kpoints.set_attribute("labels", kpathdict["labels"])
+    kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
+
     return kpoints
 
 
@@ -102,6 +113,7 @@ def submit_workchain(
     q2r,
     asr,
     distance,
+    system_2d,
     num_machines,
     num_mpiprocs_per_machine,
     walltime,
@@ -118,7 +130,7 @@ def submit_workchain(
         raise SystemExit("Cannot get force_constants from Node {}.".format(q2r))
 
     structure = read_structure(structure_file)
-    kpoints = gen_kpoints(structure, distance)
+    kpoints = gen_kpoints(structure, distance, two_d=system_2d)
 
     matdyn_calculation_parameters = {
         "matdyn": {
@@ -163,6 +175,7 @@ if __name__ == "__main__":
         args.q2r,
         args.asr,
         args.distance,
+        args.system_2d,
         args.num_machines,
         args.num_mpiprocs_per_machine,
         args.walltime,

@@ -57,7 +57,7 @@ class PwBandStructureWorkChain(WorkChain):
                    help='[Deprecated: use `pw.pseudos` instead] An alternative to specifying the pseudo potentials manually in'
                    ' `pseudos`: one can specify the name of an existing pseudo potential family and the work chain will '
                    'generate the pseudos automatically based on the input structure.')
-        spec.input('set_2d_mesh', valid_type=orm.Bool, default=lambda: orm.Bool(
+        spec.input('system_2d', valid_type=orm.Bool, default=lambda: orm.Bool(
             False), help='Set the mesh to [x,x,1]')
         spec.input(
             'cutoffs',
@@ -65,6 +65,12 @@ class PwBandStructureWorkChain(WorkChain):
             required=False,
             help='Recommended cutoffs. e.g. {"cutoff": 30, "dual": 4.9}',
             validator=validate_cutoffs
+        )
+        spec.input(
+            "kpoints",
+            valid_type=orm.KpointsData,
+            required=False,
+            help="An explicit k-points list or mesh. Either this or `kpoints_distance` has to be provided.",
         )
         spec.input(
             'should_run_relax',
@@ -184,8 +190,8 @@ class PwBandStructureWorkChain(WorkChain):
                 inputs.pw['pseudos'] = get_pseudos_from_dict(
                     self.inputs.structure, known_pseudos)
 
-            if 'set_2d_mesh' in self.inputs:
-                inputs['set_2d_mesh'] = self.inputs.set_2d_mesh
+            if 'system_2d' in self.inputs:
+                inputs['system_2d'] = self.inputs.system_2d
 
             if 'options' in self.inputs:
                 inputs.pw.metadata.options = self.inputs.options.get_dict()

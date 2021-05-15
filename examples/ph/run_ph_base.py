@@ -67,7 +67,7 @@ def parse_arugments():
         default=0.1,
     )
     parser.add_argument(
-        "--set_2d_mesh",
+        "--system-2d",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
@@ -138,7 +138,7 @@ def submit_workchain(
     tr2_ph,
     epsil,
     distance,
-    set_2d_mesh,
+    system_2d,
     start_test,
     check_imaginary_frequencies,
     frequency_threshold,
@@ -173,10 +173,15 @@ def submit_workchain(
                 f"failed to create a KpointsData mesh out of {qpoints}\n{exception}"
             )
     else:
-        kpoints = create_kpoints(structure, distance, set_2d_mesh)
+        kpoints = create_kpoints(structure, distance, system_2d)
 
     inputph_parameters = {
-        "INPUTPH": {"tr2_ph": tr2_ph, "epsil": epsil, "lqdir": True}
+        "INPUTPH": {
+            "tr2_ph": tr2_ph,
+            "epsil": epsil,
+            "lqdir": True,
+            "fildvscf": "dvscf",
+        }
     }
 
     if start_test:
@@ -228,7 +233,7 @@ if __name__ == "__main__":
         args.tr2_ph,
         args.epsil,
         args.distance,
-        args.set_2d_mesh,
+        args.system_2d,
         args.start_test,
         args.check_imaginary_frequencies,
         args.frequency_threshold,

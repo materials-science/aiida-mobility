@@ -1,12 +1,11 @@
 #!/usr/bin/env runaiida
 import argparse
 from aiida.engine.launch import submit, run_get_pk
-from aiida.common.extendeddicts import AttributeDict
-from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
-from aiida_mobility.utils.protocols.pw import ProtocolManager
 from aiida_mobility.utils import (
     add_to_group,
-    input_pw_parameters_helper,
+    get_metadata_options,
+    get_protocol,
+    get_pw_common_inputs,
     print_help,
     read_structure,
     write_pk_to_file,
@@ -43,8 +42,8 @@ def parse_arugments():
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0', 'td-1.0', and 'testing'",
-        default="td-1.0",
+        help="available protocols are 'theos-ht-1.0', 'ms-1.0', and 'testing'",
+        default="ms-1.0",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
@@ -62,7 +61,7 @@ def parse_arugments():
         help="should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc",
     )
     parser.add_argument(
-        "--set-2d-mesh",
+        "--system-2d",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
@@ -160,6 +159,11 @@ def parse_arugments():
         default=1,
     )
     parser.add_argument(
+        "--queue",
+        help="set the queue if using pbs.",
+        default=None,
+    )
+    parser.add_argument(
         "-D",
         "--daemon",
         default=False,
@@ -178,184 +182,6 @@ def parse_arugments():
     return args
 
 
-def get_protocol(structure, scf_parameters_name, protocol, pseudos):
-    # get custom pseudo
-    modifiers = {"parameters": scf_parameters_name}
-    recommended_cutoffs = None
-    if pseudos is not None:
-        from aiida_quantumespresso.utils.protocols.pw import (
-            _load_pseudo_metadata,
-        )
-
-        pseudo_json_data = _load_pseudo_metadata(pseudos)
-        structure_name = structure.get_formula()
-        if structure_name in pseudo_json_data:
-            pseudo_dict = pseudo_json_data[structure_name]
-            if "pseudo_family" in pseudo_dict:
-                pseudo_family = pseudo_dict["pseudo_family"]
-                recommended_cutoffs = {
-                    "cutoff": pseudo_dict["cutoff"],
-                    "dual": pseudo_dict["dual"],
-                }
-            elif "pseudos" in pseudo_dict:
-                pseudo_data = {}
-                pseudo_map = pseudo_dict["pseudos"]
-                for ele in pseudo_map:
-                    pseudo_data[ele] = pseudo_map[ele]
-                    pseudo_data[ele].update(
-                        {
-                            "cutoff": pseudo_dict["cutoff"],
-                            "dual": pseudo_dict["dual"],
-                        }
-                    )
-                modifiers.update(
-                    {"pseudo": "custom", "pseudo_data": pseudo_data}
-                )
-            else:
-                print(
-                    "neither pseudo_family or pseudos is provided in json data"
-                )
-                exit(1)
-        else:
-            print(
-                "No structure found in json data. Please check your filename."
-            )
-            exit(1)
-    # get protocol
-    protocol_manager = ProtocolManager(protocol)
-    protocol_modifiers = modifiers
-    protocol = protocol_manager.get_protocol_data(modifiers=protocol_modifiers)
-
-    return protocol, recommended_cutoffs
-
-
-def get_pw_common_inputs(
-    structure,
-    pw_code,
-    protocol,
-    recommended_cutoffs,
-    pseudo_family,
-    cutoffs,
-    set_2d_mesh,
-    num_machines,
-    num_mpiprocs_per_machine,
-    mode="scf",
-):
-    # get cutoff
-    ecutwfc = []
-    ecutrho = []
-    if cutoffs is not None and len(cutoffs) == 2:
-        cutoff = cutoffs[0]
-        dual = cutoffs[1]
-        cutrho = cutoff * dual
-        ecutwfc.append(cutoff)
-        ecutrho.append(cutrho)
-    elif recommended_cutoffs is not None:
-        cutoff = recommended_cutoffs["cutoff"]
-        dual = recommended_cutoffs["dual"]
-        cutrho = cutoff * dual
-        ecutwfc.append(cutoff)
-        ecutrho.append(cutrho)
-    else:
-        for kind in structure.get_kind_names():
-            try:
-                cutoff = protocol["pseudo_data"][kind]["cutoff"]
-                dual = protocol["pseudo_data"][kind]["dual"]
-                cutrho = dual * cutoff
-                ecutwfc.append(cutoff)
-                ecutrho.append(cutrho)
-            except KeyError:
-                raise SystemExit(
-                    "failed to retrieve the cutoff or dual factor for {}".format(
-                        kind
-                    )
-                )
-
-    number_of_atoms = len(structure.sites)
-    prepare_for_parameters = protocol
-    prepare_for_parameters["ecutwfc"] = max(ecutwfc)
-    prepare_for_parameters["ecutrho"] = max(ecutrho)
-    prepare_for_parameters["conv_thr"] = (
-        protocol["convergence_threshold_per_atom"] * number_of_atoms
-    )
-    # if "smearing" in protocol:
-    #     prepare_for_parameters["smearing"] = protocol["smearing"]
-    # if "degauss" in protocol:
-    #     prepare_for_parameters["degauss"] = protocol["degauss"]
-    # if "occupations" in protocol:
-    #     prepare_for_parameters["occupations"] = protocol["occupations"]
-
-    pw_parameters = input_pw_parameters_helper(mode, prepare_for_parameters)
-
-    # pw_parameters = {
-    #     "CONTROL": {
-    #         "restart_mode": "from_scratch",
-    #         "tstress": protocol["tstress"],
-    #         "tprnfor": protocol["tprnfor"],
-    #         "etot_conv_thr": protocol["etot_conv_thr"],
-    #         "forc_conv_thr": protocol["forc_conv_thr"],
-    #     },
-    #     "SYSTEM": {
-    #         "ecutwfc": max(ecutwfc),
-    #         "ecutrho": max(ecutrho),
-    #     },
-    #     "ELECTRONS": {
-    #         "conv_thr": protocol["convergence_threshold_per_atom"]
-    #         * number_of_atoms,
-    #     },
-    # }
-
-    # if "smearing" in protocol:
-    #     pw_parameters["SYSTEM"]["smearing"] = protocol["smearing"]
-    # if "degauss" in protocol:
-    #     pw_parameters["SYSTEM"]["degauss"] = protocol["degauss"]
-    # if "occupations" in protocol:
-    #     pw_parameters["SYSTEM"]["occupations"] = protocol["occupations"]
-
-    inputs = AttributeDict(
-        {
-            "pw": {
-                "code": orm.load_code(pw_code),
-                "parameters": orm.Dict(dict=pw_parameters),
-                "metadata": {},
-            },
-            # "max_iterations": orm.Int(5),
-        }
-    )
-
-    if pseudo_family is not None:
-        inputs["pseudo_family"] = orm.Str(pseudo_family)
-    else:
-        checked_pseudos = protocol.check_pseudos(
-            modifier_name=protocol.modifiers.get("pseudo", None),
-            pseudo_data=protocol.modifiers.get("pseudo_data", None),
-        )
-        known_pseudos = checked_pseudos["found"]
-        inputs.pw["pseudos"] = get_pseudos_from_dict(structure, known_pseudos)
-    if set_2d_mesh:
-        inputs["set_2d_mesh"] = orm.Bool(set_2d_mesh)
-
-    inputs.kpoints_distance = orm.Float(protocol["kpoints_mesh_density"])
-
-    inputs.pw.metadata.options = get_options(
-        num_machines, num_mpiprocs_per_machine
-    )
-
-    # return scf_parameters
-    return inputs
-
-
-def get_options(num_machines, num_mpiprocs_per_machine, walltime=5):
-    return {
-        "resources": {
-            "num_machines": num_machines,
-            "num_mpiprocs_per_machine": num_mpiprocs_per_machine,
-        },
-        "max_wallclock_seconds": 3600 * walltime,
-        "withmpi": True,
-    }
-
-
 def submit_workchain(
     structure_file,
     scf_parameters_name,
@@ -364,7 +190,7 @@ def submit_workchain(
     pseudo_family,
     kpoints_mesh,
     cutoffs,
-    set_2d_mesh,
+    system_2d,
     run_relax,
     tr2_ph,
     check_imaginary_frequencies,
@@ -384,6 +210,7 @@ def submit_workchain(
     q2r_code,
     matdyn_code,
     max_restart_iterations,
+    queue,
     daemon,
     group_name,
 ):
@@ -409,9 +236,10 @@ def submit_workchain(
         recommended_cutoffs,
         pseudo_family,
         cutoffs,
-        set_2d_mesh,
+        system_2d,
         num_machines,
         num_mpiprocs_per_machine,
+        queue_name=queue,
     )
     if kpoints_mesh is not None:
         try:
@@ -433,10 +261,11 @@ def submit_workchain(
                 recommended_cutoffs,
                 pseudo_family,
                 cutoffs,
-                set_2d_mesh,
+                system_2d,
                 num_machines,
                 num_mpiprocs_per_machine,
                 mode="vc-relax",
+                queue_name=queue,
             ),
             "relaxation_scheme": orm.Str("vc-relax"),
             "meta_convergence": orm.Bool(protocol["meta_convergence"]),
@@ -453,11 +282,24 @@ def submit_workchain(
     ph_calculation_parameters = {
         "code": orm.Code.get_from_string(ph_code),
         "parameters": orm.Dict(
-            dict={"INPUTPH": {"tr2_ph": tr2_ph, "epsil": epsil, "lqdir": True}}
+            dict={
+                "INPUTPH": {
+                    "tr2_ph": tr2_ph,
+                    "epsil": epsil,
+                    "lqdir": True,
+                    "fildvscf": "dvscf",
+                    # perturbo needs files in xml format
+                    # but aiida-quantumespresso cannot set fildyn
+                    # "fildyn": "dyn.xml",
+                }
+            }
         ),
         "metadata": {
-            "options": get_options(
-                num_machines, num_mpiprocs_per_machine, walltime
+            "options": get_metadata_options(
+                num_machines,
+                num_mpiprocs_per_machine,
+                walltime,
+                queue_name=queue,
             )
         },
     }
@@ -478,13 +320,15 @@ def submit_workchain(
             )
     else:
         workchain_parameters["qpoints_distance"] = orm.Float(qpoints_distance)
-    workchain_parameters["set_2d_mesh"] = orm.Bool(set_2d_mesh)
+    workchain_parameters["system_2d"] = orm.Bool(system_2d)
 
     q2r_calculation_parameters = {
         "code": orm.Code.get_from_string(q2r_code),
         "parameters": orm.Dict(dict={"INPUT": {"zasr": zasr}}),
         "metadata": {
-            "options": get_options(num_machines, num_mpiprocs_per_machine)
+            "options": get_metadata_options(
+                num_machines, num_mpiprocs_per_machine, queue_name=queue
+            )
         },
     }
     workchain_parameters["q2r"] = {"q2r": q2r_calculation_parameters}
@@ -493,7 +337,9 @@ def submit_workchain(
         "code": orm.Code.get_from_string(matdyn_code),
         "parameters": orm.Dict(dict={"INPUT": {"asr": asr}}),
         "metadata": {
-            "options": get_options(num_machines, num_mpiprocs_per_machine)
+            "options": get_metadata_options(
+                num_machines, num_mpiprocs_per_machine, queue_name=queue
+            )
         },
     }
     workchain_parameters["matdyn"] = {"matdyn": matdyn_calculation_parameters}
@@ -523,7 +369,7 @@ if __name__ == "__main__":
         args.pseudo_family,
         args.kpoints_mesh,
         args.cutoffs,
-        args.set_2d_mesh,
+        args.system_2d,
         args.run_relax,
         args.tr2_ph,
         args.check_imaginary_frequencies,
@@ -543,6 +389,7 @@ if __name__ == "__main__":
         str_q2r,
         str_matdyn,
         args.max_restart_iterations,
+        args.queue,
         args.daemon,
         args.group_name,
     )

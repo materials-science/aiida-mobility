@@ -36,8 +36,8 @@ def parse_argugments():
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0', 'td-1.0' and 'testing'",
-        default="td-1.0",
+        help="available protocols are 'theos-ht-1.0', 'ms-1.0' and 'testing'",
+        default="ms-1.0",
     )
     pseudos_group = parser.add_mutually_exclusive_group(required=True)
     pseudos_group.add_argument(
@@ -52,7 +52,7 @@ def parse_argugments():
         help="should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc",
     )
     parser.add_argument(
-        "--set_2d_mesh",
+        "--system-2d",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
@@ -112,7 +112,7 @@ def submit_workchain(
     pseudos,
     num_machines,
     num_mpiprocs_per_machine,
-    set_2d_mesh,
+    system_2d,
     cutoffs=None,
 ):
     print(
@@ -135,7 +135,7 @@ def submit_workchain(
             recommended_cutoffs,
             pseudo_family,
             cutoffs,
-            set_2d_mesh,
+            system_2d,
             num_machines,
             num_mpiprocs_per_machine,
             mode="vc-relax",
@@ -144,7 +144,7 @@ def submit_workchain(
         "meta_convergence": orm.Bool(protocol["meta_convergence"]),
         # "max_meta_convergence_iterations": orm.Int(10),
         "volume_convergence": orm.Float(protocol["volume_convergence"]),
-        # "set_2d_mesh": orm.Bool(set_2d_mesh),
+        # "system_2d": orm.Bool(system_2d),
     }
     parameters = relax_workchain_parameters["base"]["pw"][
         "parameters"
@@ -179,7 +179,7 @@ if __name__ == "__main__":
         args.pseudos,
         args.num_machines,
         args.num_mpiprocs_per_machine,
-        args.set_2d_mesh,
+        args.system_2d,
         args.cutoffs,
     )
 

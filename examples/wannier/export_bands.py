@@ -11,7 +11,8 @@ def get_fermi_energy(scf_output_parameters):
         efermi_units = scf_out_dict["fermi_energy_units"]
         if efermi_units != "eV":
             raise TypeError(
-                "Error: Fermi energy is not in eV!" "it is {}".format(efermi_units)
+                "Error: Fermi energy is not in eV!"
+                "it is {}".format(efermi_units)
             )
     except AttributeError:
         raise TypeError(
@@ -22,7 +23,9 @@ def get_fermi_energy(scf_output_parameters):
     return efermi
 
 
-def plot_bands(meta, path="", name="pw_bands", wannier_outputs=None, save_name="bands"):
+def plot_bands(
+    meta, path="", name="pw_bands", wannier_outputs=None, save_name="bands"
+):
     from matplotlib.pyplot import plot, show, figure, savefig, xticks
 
     try:
@@ -49,7 +52,12 @@ def plot_bands(meta, path="", name="pw_bands", wannier_outputs=None, save_name="
     ax.set_title("Electronic bands structure - %s" % (name))
     ax.set_ylabel(r"Electronic bands ($eV$)")
     ax.hlines(
-        fermi_energy, xmin, xmax, colors="r", linestyle="dashed", label="fermi energy"
+        fermi_energy,
+        xmin,
+        xmax,
+        colors="r",
+        linestyle="dashed",
+        label="fermi energy",
     )
     labels = meta.band_structure.attributes["labels"]
     label_numbers = meta.band_structure.attributes["label_numbers"]
@@ -75,11 +83,15 @@ def plot_bands(meta, path="", name="pw_bands", wannier_outputs=None, save_name="
     for i in range(bands.shape[1]):
         ax.plot(kxcoords, bands[:, i])
         if wannier_outputs is not None:
-            wannier_seekpath_parameters = wannier_outputs.seekpath_parameters.get_dict()
+            wannier_seekpath_parameters = (
+                wannier_outputs.seekpath_parameters.get_dict()
+            )
             wannier_kxcoords = wannier_seekpath_parameters[
                 "explicit_kpoints_linearcoord"
             ]
-            wannier_bands = wannier_outputs.wannier90_interpolated_bands.get_bands()
+            wannier_bands = (
+                wannier_outputs.wannier90_interpolated_bands.get_bands()
+            )
             ax.plot(wannier_kxcoords, wannier_bands[:, i])
 
     ax.set_xticks(xbars)
@@ -183,7 +195,12 @@ def plot_bands_json(wannier, pw_bands):
     ax.set_title("Electronic bands structure - %s" % (name))
     ax.set_ylabel(r"Electronic bands ($eV$)")
     ax.hlines(
-        fermi_energy, xmin, xmax, colors="r", linestyle="dashed", label="fermi energy"
+        fermi_energy,
+        xmin,
+        xmax,
+        colors="r",
+        linestyle="dashed",
+        label="fermi energy",
     )
 
     for i in range(len(p_y)):
@@ -211,7 +228,9 @@ def export_bands(wannier, pw_bands, plot_bands):
     )
     pw_bands.outputs.band_structure.export("pw_bands.agr", overwrite=True)
     pw_bands.outputs.band_structure.export("pw_bands.json", overwrite=True)
-    pw_bands.outputs.band_structure.export("pw_bands.png", "mpl_png", overwrite=True)
+    pw_bands.outputs.band_structure.export(
+        "pw_bands.png", "mpl_png", overwrite=True
+    )
 
     if plot_bands:
         plot_bands_json(wannier, pw_bands)
@@ -226,7 +245,9 @@ def parse_arugments():
         "--wannier",
         help="aiida pk of Wannier Workflow",
     )
-    parser.add_argument("-B", "--pw_bands", help="aiida pk of PW Bands Workflow")
+    parser.add_argument(
+        "-B", "--pw_bands", help="aiida pk of PW Bands Workflow"
+    )
     parser.add_argument(
         "-P",
         "--plot",

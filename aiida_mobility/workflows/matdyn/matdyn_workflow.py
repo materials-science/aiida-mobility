@@ -93,11 +93,6 @@ class MatdynWorkChain(WorkChain):
             help="qpoint distance to get qpoints.",
         )
         spec.input(
-            "qpoints_distance",
-            valid_type=Float,
-            help="qpoint distance to get qpoints.",
-        )
-        spec.input(
             "matdyn_distance",
             valid_type=Float,
             required=False,
@@ -128,7 +123,7 @@ class MatdynWorkChain(WorkChain):
             help="The finished q2r node.",
         )
         spec.input(
-            "set_2d_mesh",
+            "system_2d",
             valid_type=orm.Bool,
             default=lambda: orm.Bool(False),
             help="Set the mesh to [x,x,1]",
@@ -376,7 +371,7 @@ class MatdynWorkChain(WorkChain):
             inputs.ph.qpoints = create_kpoints(
                 self.ctx.current_structure,
                 self.ctx.qpoints_distance,
-                self.inputs.set_2d_mesh.value,
+                self.inputs.system_2d.value,
             )
 
         inputs = prepare_process_inputs(PhBaseWorkChain, inputs)

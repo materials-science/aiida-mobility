@@ -99,6 +99,12 @@ class Wannier90BandsWorkChain(WorkChain):
             help="Kpoint mesh density of the resulting band structure.",
         )
         spec.input(
+            "controls.write_u_matrices",
+            valid_type=orm.Bool,
+            default=lambda: orm.Bool(False),
+            help="Group name that the calculations will be added to.",
+        )
+        spec.input(
             "options", required=False, valid_type=orm.Dict, help="Meta options."
         )
         # spec.input('controls.nbands_factor', valid_type=orm.Float, default=orm.Float(1.5),
@@ -119,7 +125,7 @@ class Wannier90BandsWorkChain(WorkChain):
             help="An explicit k-points list or mesh. Either this or `kpoints_distance` has to be provided.",
         )
         spec.input(
-            "set_2d_mesh",
+            "system_2d",
             valid_type=orm.Bool,
             default=lambda: orm.Bool(False),
             help="Set the mesh to [x,x,1]",
@@ -271,11 +277,13 @@ class Wannier90BandsWorkChain(WorkChain):
         )
         ########################################################################
         # seek path will transform the cells of some 2d structures
-        if (
-            "set_2d_mesh" not in self.inputs
-            or self.inputs.set_2d_mesh.value == False
+        if "kpoints" not in self.inputs and (
+            "system_2d" not in self.inputs
+            or self.inputs.system_2d.value == False
         ):
             self.ctx.current_structure = result["primitive_structure"]
+        else:
+            self.ctx.current_structure = self.inputs.structure
         ########################################################################
         self.ctx.explicit_kpoints_path = result["explicit_kpoints"]
         # save kpoint_path for bands_plot
@@ -450,10 +458,15 @@ class Wannier90BandsWorkChain(WorkChain):
 
     def setup_wannier90_parameters(self):
         parameters = {
+            # compatible with versions of wannier earlier than 3.0
             "use_ws_distance": True,
             # no need anymore since kmesh_tol is handled by Wannier90BaseWorkChain
             # 'kmesh_tol': 1e-8
         }
+
+        if self.inputs.controls.write_u_matrices:
+            parameters["write_u_matrices"] = True
+            parameters["write_xyz"] = True
 
         if self.inputs.controls.auto_projections:
             parameters["auto_projections"] = True
@@ -557,8 +570,8 @@ class Wannier90BandsWorkChain(WorkChain):
         if "kpoints" in self.inputs:
             inputs["kpoints"] = self.inputs.kpoints
 
-        if "set_2d_mesh" in self.inputs:
-            inputs["set_2d_mesh"] = self.inputs.set_2d_mesh
+        if "system_2d" in self.inputs:
+            inputs["system_2d"] = self.inputs.system_2d
 
         if "options" in self.inputs:
             inputs.pw.metadata.options = self.inputs.options.get_dict()

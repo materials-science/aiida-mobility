@@ -100,13 +100,13 @@ class PhBaseWorkChain(BaseRestartWorkChain):
         self.ctx.max_qpoint = self.ctx.inputs.parameters["INPUTPH"].get(
             "last_q", max(self.ctx.inputs.qpoints.get_attribute("mesh"))
         )
-        if self.inputs.separated_qpoints.value:
-            self.ctx.inputs.parameters["INPUTPH"][
-                "start_q"
-            ] = self.ctx.current_qpoint
-            self.ctx.inputs.parameters["INPUTPH"][
-                "last_q"
-            ] = self.ctx.current_qpoint
+        # if self.inputs.separated_qpoints.value:
+        self.ctx.inputs.parameters["INPUTPH"][
+            "start_q"
+        ] = self.ctx.current_qpoint
+        self.ctx.inputs.parameters["INPUTPH"][
+            "last_q"
+        ] = self.ctx.current_qpoint
 
     def validate_resources(self):
         """Validate the inputs related to the resources.
@@ -187,25 +187,39 @@ class PhBaseWorkChain(BaseRestartWorkChain):
         #     sed -i  "s|.*last_q.*|    last_q = $value |g" ph_$value.in
         #     mpirun -n 72 ph.x < ph_$value.in > ph_$value.out
         # done
-        def start_next(action):
-            if self.ctx.current_qpoint == self.ctx.max_qpoint:
+        def start_next(action, separated=False):
+            if self.ctx.current_qpoint >= self.ctx.max_qpoint or (
+                self.inputs.separated_qpoints.value is False
+                and self.ctx.current_qpoint > 1
+            ):
                 self.ctx.is_finished = True
                 return
             self.ctx.restart_calc = node
+            # self.ctx.no_recover = False
             if (
                 "epsil" in self.ctx.inputs.parameters["INPUTPH"]
                 and self.ctx.inputs.parameters["INPUTPH"]["epsil"] == True
             ):
                 self.ctx.inputs.parameters["INPUTPH"]["epsil"] = False
-            self.ctx.no_recover = True
+                self.ctx.no_recover = True
 
-            self.ctx.current_qpoint += 1
-            self.ctx.inputs.parameters["INPUTPH"][
-                "start_q"
-            ] = self.ctx.current_qpoint
-            self.ctx.inputs.parameters["INPUTPH"][
-                "last_q"
-            ] = self.ctx.current_qpoint
+            if separated is True:
+                self.ctx.inputs.settings["PARENT_FOLDER_SYMLINK"] = True
+                self.ctx.current_qpoint += 1
+                self.ctx.inputs.parameters["INPUTPH"][
+                    "start_q"
+                ] = self.ctx.current_qpoint
+                self.ctx.inputs.parameters["INPUTPH"][
+                    "last_q"
+                ] = self.ctx.current_qpoint
+            else:
+                self.ctx.current_qpoint += 1
+                self.ctx.inputs.parameters["INPUTPH"][
+                    "start_q"
+                ] = self.ctx.current_qpoint
+                self.ctx.inputs.parameters["INPUTPH"][
+                    "last_q"
+                ] = self.ctx.max_qpoint
 
             self.report_error_handled(node, action)
 
@@ -214,72 +228,74 @@ class PhBaseWorkChain(BaseRestartWorkChain):
             or self.inputs.parent_scf_node_mode.value
         ):
             # TODO: whether or not to check every point?
-            if self.inputs.separated_qpoints.value:
-                number_of_qpoints = (
-                    node.outputs.output_parameters.get_dict().get(
-                        "number_of_qpoints", None
-                    )
+            number_of_qpoints = node.outputs.output_parameters.get_dict().get(
+                "number_of_qpoints", None
+            )
+            if (
+                number_of_qpoints is not None
+                and self.ctx.max_qpoint != number_of_qpoints
+            ):
+                self.ctx.max_qpoint = number_of_qpoints
+                # separate calculation times do not need to add to iteration_times
+                if self.inputs.separated_qpoints.value:
+                    self.ctx.max_iterations += 2 * self.ctx.max_qpoint
+                else:
+                    self.ctx.max_iterations += 2
+            if self.ctx.check_imaginary_frequencies:
+                matrix_name = "dynamical_matrix_{}".format(
+                    self.ctx.current_qpoint
                 )
-                if (
-                    number_of_qpoints is not None
-                    and self.ctx.max_qpoint != number_of_qpoints
-                ):
-                    self.ctx.max_qpoint = number_of_qpoints
-                    # separate calculation times does not add to iteration_times
-                    self.ctx.max_iterations += self.ctx.max_qpoint
-                if self.ctx.check_imaginary_frequencies:
-                    matrix_name = "dynamical_matrix_{}".format(
-                        self.ctx.current_qpoint
+                self.report_error_handled(
+                    node,
+                    "checking imaginary frequencies in {}...".format(
+                        matrix_name
+                    ),
+                )
+                try:
+                    dynamical_matrix = (
+                        node.outputs.output_parameters.get_dict().get(
+                            matrix_name, None
+                        )
                     )
+                    frequencies = dynamical_matrix.get("frequencies", None)
+                    if frequencies is None:
+                        raise AttributeError("frequencies is None.")
+                    else:
+                        if frequencies[0] > self.ctx.frequency_threshold:
+                            start_next(
+                                action="checked point {} successfuly and just restarting to next one...".format(
+                                    self.ctx.current_qpoint
+                                ),
+                                separated=self.inputs.separated_qpoints.value,
+                            )
+                            return ProcessHandlerReport(True)
+                        else:
+                            self.report_error_handled(
+                                node,
+                                "imaginary frequencies found at point {}, aborting...".format(
+                                    self.ctx.current_qpoint
+                                ),
+                            )
+                            return ProcessHandlerReport(
+                                True,
+                                self.exit_codes.ERROR_IMAGINARY_FREQUENCIES,
+                            )
+                except AttributeError as err:
                     self.report_error_handled(
                         node,
-                        "checking imaginary frequencies in {}...".format(
-                            matrix_name
+                        "[{}]. Not found valid dynamical_matrix_{} outputs, restarting...".format(
+                            err, self.ctx.current_qpoint
                         ),
                     )
-                    try:
-                        dynamical_matrix = (
-                            node.outputs.output_parameters.get_dict().get(
-                                matrix_name, None
-                            )
-                        )
-                        frequencies = dynamical_matrix.get("frequencies", None)
-                        if frequencies is None:
-                            raise AttributeError
-                        else:
-                            if frequencies[0] > self.ctx.frequency_threshold:
-                                start_next(
-                                    action="checked point {} successfuly and just restarting to next one...".format(
-                                        self.ctx.current_qpoint
-                                    )
-                                )
-                                return ProcessHandlerReport(True)
-                            else:
-                                self.report_error_handled(
-                                    node,
-                                    "imaginary frequencies found at point {}, aborting...".format(
-                                        self.ctx.current_qpoint
-                                    ),
-                                )
-                                return ProcessHandlerReport(
-                                    True,
-                                    self.exit_codes.ERROR_IMAGINARY_FREQUENCIES,
-                                )
-                    except AttributeError as err:
-                        self.report_error_handled(
-                            node,
-                            "[{}]. Not found valid dynamical_matrix_{} outputs, restarting...".format(
-                                err, self.ctx.current_qpoint
-                            ),
-                        )
-                        return ProcessHandlerReport(True)
-                else:
-                    start_next(
-                        action="Not check point {} and just restarting to next one...".format(
-                            self.ctx.current_qpoint
-                        )
-                    )
                     return ProcessHandlerReport(True)
+            else:
+                start_next(
+                    action="Not check point {} and just restarting to next one...".format(
+                        self.ctx.current_qpoint
+                    ),
+                    separated=self.inputs.separated_qpoints.value,
+                )
+                return ProcessHandlerReport(True)
 
     @process_handler(
         priority=580, exit_codes=PhCalculation.exit_codes.ERROR_OUT_OF_WALLTIME

@@ -1,7 +1,7 @@
 <!--
  * @Author: your name
  * @Date: 2021-02-26 15:22:38
- * @LastEditTime: 2021-03-06 17:15:34
+ * @LastEditTime: 2021-04-28 18:12:20
  * @LastEditors: Please set LastEditors
  * @Description: In User Settings Edit
  * @FilePath: /aiida-mobility/dev.md
@@ -11,47 +11,41 @@
 
 ## Schedules
 
--   [ ] Automated relax
+- [ ] Automated relax
 
-    -   covergence criterion
-        -   [x] volume
-        -   [ ] total energy
-    -   parameters
-        -   "kpoints_mesh_density": 0.2,
-            -   make value of mesh around 20
-            -   [ ] use large mesh to relax and then use smaller
-        -   "convergence_threshold_per_atom": 1.0e-12
-        -   "forc_conv_thr": 1.0e-8
-        -   "etot_conv_thr": 1.0e-8
-        -   "press_conv_thr": 1.0e-8
-        -   "tstress": True
-        -   "tprnfor": True
-        -   "occupations": "fixed"
-            -   only for ph calculation
-        -   "nstep": 100
-        -   "num_bands_factor": 2 # number of bands wrt number of occupied bands
-        -   "assume_isolated": "2D"
-        -   "cell_dofree": "2Dxy"
-        -   "electron_maxstep": 200
-        -   "diago_full_acc": True
-        -   "mixing_mode": "local-TF"
-        -   "mixing_beta": 0.7
-        -   "vdw_corr": "DFT-D"
-        -   "volume_convergence": 0.01
+  - covergence criterion
+    - [x] volume
+    - [ ] total energy
+  - protocol and parameters
+    - `ms-1.0`
 
--   [ ] Automated ph
-    -   [ ] deal with imaginary frequencies
+- [x] Automated ph
+
+  - [x] deal with imaginary frequencies
+
+- [ ] change `fildyn` to `xml` for perturbo support
 
 ## Issues
 
+- [x] calculating ph at separated pointed will cause many redundant copies.
+  - add `PARENT_FOLDER_SYMLINK`
+- [ ] automatically set 2d mesh
+- [ ] there is a bug in `seekpath_structure_analysis`, where `reference_distance` does not work.
+      ![ #bugs ](https://img.shields.io/badge/seekpath-bugs-critical)
+  - currently only found not work in `examples/run_matdyn_base.py`
+- [ ] `flfrc` bug in `matdyn`
+      ![ #matdyn #bugs ](https://img.shields.io/badge/matdyn-bugs-critical)
+
 ### ph
 
--   [ ] set `epsil` `True` or `False`
-        Set `epsil` to `True` at the first point, and then switch off. Also, set `recover` to `False`.
--   [ ] after checking the first point, should start ph at every single point or just start from the second to the last?
-        Plan to start at every point because of current failure from the second to the last.
+- [x] set `epsil` `True` or `False`
+      Set `epsil` to `True` at the first point, and then switch off. Also, set `recover` to `False`.
+- [x] after checking the first point, should start ph at every single point or just start from the second to the last?
+      Plan to start at every point because of current failure from the second to the last.
 
-        Not only in the second to the last but failed in every attempt involved more than one point.
+  - :o: add `separated_points` flag
+
+  - :x: [cannot reproduce] ~~Not only in the second to the last but failed in every attempt involved more than one point.~~
 
     ```bash
     *** Error in `/home/lz/soft/qe-6.5/bin/ph.x': corrupted size vs. prev_size: 0x0000000007848a90 ***

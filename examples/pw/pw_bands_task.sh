@@ -8,7 +8,7 @@ for file in $(ls *.xsf); do
         wpk=${task%%.*}
     done
     cd '..'
-    ./run_dft_bands.py -w ${wpk} -p 'accurate' -P 4 -C lz -D --pseudo-family 'sssp' --set_2d_mesh
+    ./run_dft_bands.py -w ${wpk} -p 'accurate' -P 4 -C lz -D --pseudo-family 'sssp' --system-2d
     cd ${name}
     for task in $(ls *.dft); do
         dftpk=${task%%.*}

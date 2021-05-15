@@ -98,7 +98,7 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                    help='When defined, the work chain will first launch an initialization calculation to determine the '
                    'dimensions of the problem, and based on this it will try to set optimal parallelization flags.')
         # MODIFIED
-        spec.input('set_2d_mesh', valid_type=orm.Bool,
+        spec.input('system_2d', valid_type=orm.Bool,
                    default=lambda: orm.Bool(False), help='Set the mesh to [x,x,1]')
 
         spec.outline(
@@ -280,7 +280,7 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         self.ctx.inputs = AttributeDict(
             self.exposed_inputs(PwCalculation, "pw")
         )
-        self.ctx.set_2d_mesh = self.inputs.set_2d_mesh.value
+        self.ctx.system_2d = self.inputs.system_2d.value
 
     def validate_parameters(self):
         """Validate inputs that might depend on each other and cannot be validated by the spec.
@@ -328,7 +328,7 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
                 **inputs
             )  # pylint: disable=unexpected-keyword-arg
 
-            if self.ctx.set_2d_mesh:
+            if self.ctx.system_2d:
                 kpoints = kpoints.clone()
                 mesh = kpoints.get_kpoints_mesh()
                 mesh[0][2] = 1

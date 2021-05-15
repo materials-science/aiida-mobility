@@ -44,8 +44,8 @@ def parse_arugments():
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0', 'td-1.0' and 'testing'",
-        default="td-1.0",
+        help="available protocols are 'theos-ht-1.0', 'ms-1.0' and 'testing'",
+        default="ms-1.0",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
@@ -57,7 +57,7 @@ def parse_arugments():
         help="should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc",
     )
     parser.add_argument(
-        "--set_2d_mesh",
+        "--system-2d",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
@@ -195,7 +195,7 @@ def parse_arugments():
     recommended_cutoffs,
     pseudo_family,
     cutoffs,
-    set_2d_mesh,
+    system_2d,
     num_machines,
     num_mpiprocs_per_machine,
 ):
@@ -272,8 +272,8 @@ def parse_arugments():
         )
         known_pseudos = checked_pseudos["found"]
         inputs.pw["pseudos"] = get_pseudos_from_dict(structure, known_pseudos)
-    if set_2d_mesh:
-        inputs["set_2d_mesh"] = orm.Bool(set_2d_mesh)
+    if system_2d:
+        inputs["system_2d"] = orm.Bool(system_2d)
 
     inputs.kpoints_distance = orm.Float(protocol["kpoints_mesh_density"])
 
@@ -303,7 +303,7 @@ def submit_workchain(
     pseudos,
     pseudo_family,
     cutoffs,
-    set_2d_mesh,
+    system_2d,
     run_relax,
     tr2_ph,
     epsil,
@@ -340,7 +340,7 @@ def submit_workchain(
         recommended_cutoffs,
         pseudo_family,
         cutoffs,
-        set_2d_mesh,
+        system_2d,
         num_machines,
         num_mpiprocs_per_machine,
     )
@@ -355,7 +355,7 @@ def submit_workchain(
                 recommended_cutoffs,
                 pseudo_family,
                 cutoffs,
-                set_2d_mesh,
+                system_2d,
                 num_machines,
                 num_mpiprocs_per_machine,
                 mode="vc-relax",
@@ -373,6 +373,8 @@ def submit_workchain(
                 "INPUTPH": {
                     "tr2_ph": tr2_ph,
                     "epsil": epsil,
+                    "lqdir": True,
+                    "fildvscf": "dvscf",
                 }
             }
         ),
@@ -384,7 +386,7 @@ def submit_workchain(
     }
     workchain_parameters["ph"] = {"ph": ph_calculation_parameters}
     workchain_parameters["qpoints_distance"] = orm.Float(qpoints_distance)
-    workchain_parameters["set_2d_mesh"] = orm.Bool(set_2d_mesh)
+    workchain_parameters["system_2d"] = orm.Bool(system_2d)
 
     q2r_calculation_parameters = {
         "code": orm.Code.get_from_string(q2r_code),
@@ -428,7 +430,7 @@ if __name__ == "__main__":
         args.pseudos,
         args.pseudo_family,
         args.cutoffs,
-        args.set_2d_mesh,
+        args.system_2d,
         args.run_relax,
         args.tr2_ph,
         args.epsil,

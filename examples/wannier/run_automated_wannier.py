@@ -16,7 +16,7 @@ from aiida_mobility.utils import (
 str_pw = "qe-6.5-pw"
 str_pw2wan = "pw2wannier90"
 str_projwfc = "projwfc"
-str_wan = "wannier-3.0"
+str_wan = "wannier-3.1"
 
 group_name = "scdm_workflow"
 
@@ -53,12 +53,12 @@ def parse_arugments():
     parser.add_argument(
         "-p",
         "--parameters",
-        help="available parameters protocols are 'fast', 'default'",
+        help="available scf parameters protocols are {`fast`, `default` and `accurate`}_{``, `gaussian`, `fixed`}",
         default="default",
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0' and 'testing'",
+        help="available protocols are 'theos-ht-1.0' and 'ms-1.0'",
         default="theos-ht-1.0",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
@@ -77,22 +77,10 @@ def parse_arugments():
         help="should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc",
     )
     parser.add_argument(
-        "--set_2d_mesh",
+        "--system-2d",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
-    )
-    parser.add_argument(
-        "-m",
-        "--do-mlwf",
-        help="do maximal localization of Wannier functions",
-        action="store_false",
-    )
-    parser.add_argument(
-        "-d",
-        "--do-disentanglement",
-        help="do disentanglement in Wanner90 step (This should be False, otherwise band structure is not optimal!)",
-        action="store_true",
     )
     parser.add_argument(
         "-v",
@@ -104,6 +92,28 @@ def parse_arugments():
         "-r",
         "--retrieve-hamiltonian",
         help="Retrieve Wannier Hamiltonian after the workflow finished",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--plot-wannier-functions",
+        help="Group name that the calculations will be added to.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-d",
+        "--do-disentanglement",
+        help="do disentanglement in Wanner90 step (This should be False, otherwise band structure is not optimal!)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-m",
+        "--do-mlwf",
+        help="do maximal localization of Wannier functions",
+        action="store_false",
+    )
+    parser.add_argument(
+        "--write-u-matrices",
+        help="Group name that the calculations will be added to.",
         action="store_true",
     )
     parser.add_argument(
@@ -131,7 +141,7 @@ def parse_arugments():
         help="Run with submit",
     )
     parser.add_argument(
-        "--group_name",
+        "--group-name",
         type=str,
         help="Add this task to Group",
         default="scdm_workflow",
@@ -167,13 +177,15 @@ def submit_workchain(
     pseudo_family,
     pseudos,
     only_valence,
+    retrieve_hamiltonian,
+    plot_wannier_functions,
     do_disentanglement,
     do_mlwf,
-    retrieve_hamiltonian,
+    write_u_matrices,
     run_relax,
     group_name,
     daemon,
-    set_2d_mesh,
+    system_2d,
     cutoffs,
     kpoints_mesh,
 ):
@@ -189,10 +201,12 @@ def submit_workchain(
         structure = read_structure(structure_file)
 
     controls = {
-        "retrieve_hamiltonian": orm.Bool(retrieve_hamiltonian),
         "only_valence": orm.Bool(only_valence),
+        "retrieve_hamiltonian": orm.Bool(retrieve_hamiltonian),
+        "plot_wannier_functions": orm.Bool(plot_wannier_functions),
         "do_disentanglement": orm.Bool(do_disentanglement),
         "do_mlwf": orm.Bool(do_mlwf),
+        "write_u_matrices": orm.Bool(write_u_matrices),
     }
 
     if only_valence:
@@ -273,7 +287,7 @@ def submit_workchain(
                 "withmpi": True,
             }
         ),
-        "set_2d_mesh": orm.Bool(set_2d_mesh),
+        "system_2d": orm.Bool(system_2d),
     }
 
     if pseudo_family is not None:
@@ -330,13 +344,15 @@ if __name__ == "__main__":
         args.pseudo_family,
         args.pseudos,
         args.only_valence,
+        args.retrieve_hamiltonian,
+        args.plot_wannier_functions,
         args.do_disentanglement,
         args.do_mlwf,
-        args.retrieve_hamiltonian,
+        args.write_u_matrices,
         args.run_relax,
         args.group_name,
         args.daemon,
-        args.set_2d_mesh,
+        args.system_2d,
         args.cutoffs,
         args.kpoints_mesh,
     )

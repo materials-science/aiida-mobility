@@ -1,6 +1,7 @@
 {
     "entry_points": {
         "aiida.workflows": [
+            "mobility.matdyn_restart = aiida_mobility.workflows.matdyn.matdyn_restart:MatdynRestartWorkChain",
             "mobility.bands = aiida_mobility.workflows.wannier.bands:Wannier90BandsWorkChain",
             "mobility.wannier90 = aiida_mobility.workflows.wannier.wannier:Wannier90WorkChain"
         ]
@@ -11,7 +12,7 @@
     "author_email": "developers@aiida.net",
     "install_requires": [
         "aiida-core>=1.1.1,<2",
-        "aiida-quantumespresso>=3.0.0a6,<=3.3.0",
+        "aiida-quantumespresso>=3.3.0,<=3.4.1",
         "aiida-wannier90>=2.0.0,<=2.0.1"
     ],
     "url": "https://github.com/materials-science/aiida-mobility",

@@ -118,12 +118,6 @@ class MatdynRestartWorkChain(WorkChain):
             help="The max iterations to restart from relax.",
         )
         spec.input(
-            "clean_workdir",
-            valid_type=Bool,
-            default=lambda: Bool(False),
-            help="If `True`, work directories of all called calculation will be cleaned at the end of execution.",
-        )
-        spec.input(
             "scf_node",
             valid_type=Int,
             required=False,
@@ -142,10 +136,16 @@ class MatdynRestartWorkChain(WorkChain):
             help="The finished q2r node.",
         )
         spec.input(
-            "set_2d_mesh",
+            "system_2d",
             valid_type=orm.Bool,
             default=lambda: orm.Bool(False),
             help="Set the mesh to [x,x,1]",
+        )
+        spec.input(
+            "clean_workdir",
+            valid_type=Bool,
+            default=lambda: Bool(False),
+            help="If `True`, work directories of all called calculation will be cleaned at the end of execution.",
         )
         spec.inputs.validator = validate_inputs
         spec.outline(
@@ -301,15 +301,15 @@ class MatdynRestartWorkChain(WorkChain):
 
         if self.ctx.iteration == 0:
             self.ctx.kpoints_distance = inputs.base.kpoints_distance
-            self.ctx.etot_conv_thr = inputs.base.pw.parameters["CONTROL"][
-                "etot_conv_thr"
-            ]
-            self.ctx.forc_conv_thr = inputs.base.pw.parameters["CONTROL"][
-                "forc_conv_thr"
-            ]
+            self.ctx.etot_conv_thr = inputs.base.pw.parameters["CONTROL"].get(
+                "etot_conv_thr", 1.0e-4
+            )
+            self.ctx.forc_conv_thr = inputs.base.pw.parameters["CONTROL"].get(
+                "forc_conv_thr", 1.0e-3
+            )
             self.ctx.conv_thr = inputs.base.pw.parameters.get_attribute(
                 "ELECTRONS"
-            )["conv_thr"]
+            ).get("conv_thr", 1.0e-6)
         else:
             inputs.base.kpoints_distance = self.ctx.kpoints_distance
             inputs.base.pw.parameters["CONTROL"][
@@ -376,15 +376,15 @@ class MatdynRestartWorkChain(WorkChain):
 
         if self.ctx.iteration == 0 and "relax" not in self.inputs:
             self.ctx.kpoints_distance = inputs.kpoints_distance
-            self.ctx.etot_conv_thr = inputs.pw.parameters["CONTROL"][
-                "etot_conv_thr"
-            ]
-            self.ctx.forc_conv_thr = inputs.pw.parameters["CONTROL"][
-                "forc_conv_thr"
-            ]
-            self.ctx.conv_thr = inputs.pw.parameters.get_attribute("ELECTRONS")[
-                "conv_thr"
-            ]
+            self.ctx.etot_conv_thr = inputs.pw.parameters["CONTROL"].get(
+                "etot_conv_thr", 1.0e-4
+            )
+            self.ctx.forc_conv_thr = inputs.pw.parameters["CONTROL"].get(
+                "forc_conv_thr", 1.0e-3
+            )
+            self.ctx.conv_thr = inputs.pw.parameters.get_attribute(
+                "ELECTRONS"
+            ).get("conv_thr", 1.0e-6)
         else:
             inputs.kpoints_distance = self.ctx.kpoints_distance
             inputs.pw.parameters["CONTROL"][
@@ -467,7 +467,7 @@ class MatdynRestartWorkChain(WorkChain):
                 inputs.ph.qpoints = create_kpoints(
                     self.ctx.current_structure,
                     self.ctx.qpoints_distance,
-                    self.inputs.set_2d_mesh.value,
+                    self.inputs.system_2d.value,
                 )
 
         inputs = prepare_process_inputs(PhBaseWorkChain, inputs)

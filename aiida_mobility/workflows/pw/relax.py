@@ -84,7 +84,7 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         spec.input('clean_workdir', valid_type=orm.Bool, default=lambda: orm.Bool(False),
                    help='If `True`, work directories of all called calculation will be cleaned at the end of execution.')
         # MODIFIED
-        spec.input('set_2d_mesh', valid_type=orm.Bool,
+        spec.input('system_2d', valid_type=orm.Bool,
                    default=lambda: orm.Bool(False), help='Set the mesh to [x,x,1]')
         spec.inputs.validator = validate_inputs
         spec.outline(
@@ -115,7 +115,7 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         structure,
         protocol=None,
         overrides=None,
-        relax_type=RelaxType.ATOMS_CELL,
+        relax_type=RelaxType.POSITIONS_CELL,
         **kwargs,
     ):
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
@@ -187,7 +187,7 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
 
     def setup(self):
         """Input validation and context setup."""
-        self.ctx.set_2d_mesh = self.inputs.set_2d_mesh.value
+        self.ctx.system_2d = self.inputs.system_2d.value
         self.ctx.current_number_of_bands = None
         self.ctx.current_structure = self.inputs.structure
         self.ctx.current_cell_volume = None
@@ -312,8 +312,8 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = f"iteration_{self.ctx.iteration:02d}"
 
         inputs = prepare_process_inputs(PwBaseWorkChain, inputs)
-        if self.ctx.set_2d_mesh:
-            inputs["set_2d_mesh"] = self.ctx.set_2d_mesh
+        if self.ctx.system_2d:
+            inputs["system_2d"] = self.ctx.system_2d
         running = self.submit(PwBaseWorkChain, **inputs)
 
         self.report(f"launching PwBaseWorkChain<{running.pk}>")

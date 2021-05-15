@@ -33,13 +33,13 @@ def parse_argugments():
     parser.add_argument(
         "-p",
         "--parameters",
-        help="available parameters protocols are 'fast', 'default' and 'accurate'",
-        default="default",
+        help="available scf parameters protocols are {`fast`, `default` and `accurate`}_{``, `gaussian`, `fixed`}",
+        default="accurate_default",
     )
     parser.add_argument(
         "--protocol",
-        help="available protocols are 'theos-ht-1.0' and 'testing'",
-        default="theos-ht-1.0",
+        help="available protocols are 'theos-ht-1.0' and 'ms-1.0'",
+        default="ms-1.0",
     )
     pseudos_group = parser.add_mutually_exclusive_group(required=True)
     pseudos_group.add_argument(
@@ -60,7 +60,7 @@ def parse_argugments():
         help="should be [ecutwfc] [dual]. [ecutrho] will get by dual * ecutwfc",
     )
     parser.add_argument(
-        "--set_2d_mesh",
+        "--system-2d",
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
@@ -128,7 +128,7 @@ def submit_workchain(
     run_relax,
     num_machines,
     num_mpiprocs_per_machine,
-    set_2d_mesh,
+    system_2d,
     cutoffs,
     kpoints_mesh,
 ):
@@ -199,7 +199,7 @@ def submit_workchain(
                 "withmpi": True,
             }
         ),
-        "set_2d_mesh": orm.Bool(set_2d_mesh),
+        "system_2d": orm.Bool(system_2d),
     }
     if pseudo_family is not None:
         pwbands_workchain_parameters["pseudo_family"] = orm.Str(pseudo_family)
@@ -249,7 +249,7 @@ if __name__ == "__main__":
         args.run_relax,
         args.num_machines,
         args.num_mpiprocs_per_machine,
-        args.set_2d_mesh,
+        args.system_2d,
         args.cutoffs,
         args.kpoints_mesh,
     )
