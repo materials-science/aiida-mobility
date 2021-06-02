@@ -277,9 +277,10 @@ class Wannier90BandsWorkChain(WorkChain):
         )
         ########################################################################
         # seek path will transform the cells of some 2d structures
-        if "kpoints" not in self.inputs and (
-            "system_2d" not in self.inputs
-            or self.inputs.system_2d.value == False
+        # TODO: use 2d path
+        if (
+            "kpoints" not in self.inputs
+            and self.inputs.system_2d.value == False
         ):
             self.ctx.current_structure = result["primitive_structure"]
         else:
@@ -739,7 +740,7 @@ class Wannier90BandsWorkChain(WorkChain):
 
         if self.inputs.should_run_relax.value:
             inputs["relax"] = self.get_relax_inputs()
-            inputs.relax.base.kpoints_distance = orm.Float(
+            inputs.relax["base"]["kpoints_distance"] = orm.Float(
                 self.ctx.protocol["kpoints_mesh_density"]
             )
         if "kpoints" in self.inputs:

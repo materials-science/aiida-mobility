@@ -229,28 +229,15 @@ def submit_workchain(
         "max_restart_iterations": orm.Int(max_restart_iterations),
     }
 
-    scf_parameters = get_pw_common_inputs(
-        structure,
-        pw_code,
-        protocol,
-        recommended_cutoffs,
-        pseudo_family,
-        cutoffs,
-        system_2d,
-        num_machines,
-        num_mpiprocs_per_machine,
-        queue_name=queue,
-    )
+    kpoints = None
     if kpoints_mesh is not None:
         try:
             kpoints = orm.KpointsData()
             kpoints.set_kpoints_mesh(kpoints_mesh)
-            scf_parameters["kpoints"] = kpoints
         except ValueError as exception:
             raise SystemExit(
                 f"failed to create a KpointsData mesh out of {kpoints_mesh}\n{exception}"
             )
-    workchain_parameters["scf"] = scf_parameters
 
     if run_relax:
         relax_parameters = {
@@ -277,7 +264,25 @@ def submit_workchain(
             "CELL", {"press_conv_thr": protocol["press_conv_thr"]}
         )
         relax_parameters["base"]["pw"]["parameters"] = orm.Dict(dict=parameters)
+        if kpoints is not None:
+            relax_parameters["base"]["kpoints"] = kpoints
         workchain_parameters["relax"] = relax_parameters
+
+    scf_parameters = get_pw_common_inputs(
+        structure,
+        pw_code,
+        protocol,
+        recommended_cutoffs,
+        pseudo_family,
+        cutoffs,
+        system_2d,
+        num_machines,
+        num_mpiprocs_per_machine,
+        queue_name=queue,
+    )
+    if kpoints is not None:
+        scf_parameters["kpoints"] = kpoints
+    workchain_parameters["scf"] = scf_parameters
 
     ph_calculation_parameters = {
         "code": orm.Code.get_from_string(ph_code),

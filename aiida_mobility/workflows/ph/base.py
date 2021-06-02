@@ -33,7 +33,7 @@ class PhBaseWorkChain(BaseRestartWorkChain):
         # yapf: disable
         super().define(spec)
         spec.expose_inputs(PhCalculation, namespace='ph')
-        spec.input('check_imaginary_frequencies', valid_type=orm.Bool,default=lambda: orm.Bool(True), help='whether to check imaginary frequencies.')
+        spec.input('check_imaginary_frequencies', valid_type=orm.Bool,default=lambda: orm.Bool(False), help='whether to check imaginary frequencies.')
         spec.input('frequency_threshold', valid_type=orm.Float, default=lambda: orm.Float(-15.0), help='The threshold to check if imaginary frequencies exsit in G.')
         spec.input('separated_qpoints', valid_type=orm.Bool,default=lambda: orm.Bool(False), help='Set true if you want to calculate each qpoint separately.')
         spec.input('parent_scf_node_mode', valid_type=orm.Bool, default=lambda: orm.Bool(False), help='The calculation mode of parent node: scf or ph.')

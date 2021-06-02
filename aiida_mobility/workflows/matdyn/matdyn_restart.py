@@ -583,15 +583,18 @@ class MatdynRestartWorkChain(WorkChain):
         )
         self.ctx.current_structure = result["primitive_structure"]
 
-        kpath, kpathdict = constr2dpath(
-            result["explicit_kpoints"].get_kpoints(),
-            **result["explicit_kpoints"].attributes
-        )
-        kpoints = KpointsData()
-        kpoints.set_kpoints(kpath)
-        kpoints.set_attribute("labels", kpathdict["labels"])
-        kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
-        self.ctx.explicit_kpoints = kpoints
+        if self.inputs.system_2d.value:
+            kpath, kpathdict = constr2dpath(
+                result["explicit_kpoints"].get_kpoints(),
+                **result["explicit_kpoints"].attributes
+            )
+            kpoints = KpointsData()
+            kpoints.set_kpoints(kpath)
+            kpoints.set_attribute("labels", kpathdict["labels"])
+            kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
+            self.ctx.explicit_kpoints = kpoints
+        else:
+            self.ctx.explicit_kpoints = result["explicit_kpoints"]
 
         self.out("primitive_structure", result["primitive_structure"])
         self.out("seekpath_parameters", result["parameters"])

@@ -7,7 +7,9 @@ from aiida_quantumespresso.utils.mapping import prepare_process_inputs
 
 # from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
 from aiida_mobility.workflows.pw.base import PwBaseWorkChain
-from aiida_quantumespresso.workflows.pw.relax import PwRelaxWorkChain
+
+# from aiida_quantumespresso.workflows.pw.relax import PwRelaxWorkChain
+from aiida_mobility.workflows.pw.relax import PwRelaxWorkChain
 from aiida_quantumespresso.calculations.projwfc import ProjwfcCalculation
 from aiida_quantumespresso.calculations.pw2wannier90 import (
     Pw2wannier90Calculation,

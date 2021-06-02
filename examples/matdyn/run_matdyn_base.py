@@ -42,8 +42,8 @@ def parse_arugments():
     parser.add_argument(
         "--distance",
         type=float,
-        help="kpoint distance to get kpoints, default is 0.1",
-        default=0.1,
+        help="kpoint distance to get kpoints, default is 0.01",
+        default=0.01,
     )
     parser.add_argument(
         "--system-2d",
@@ -96,14 +96,17 @@ def gen_kpoints(structure, distance, two_d=False):
     }
     result = seekpath_structure_analysis(structure, **inputs)
 
-    kpath, kpathdict = constr2dpath(
-        result["explicit_kpoints"].get_kpoints(),
-        **result["explicit_kpoints"].attributes
-    )
-    kpoints = orm.KpointsData()
-    kpoints.set_kpoints(kpath)
-    kpoints.set_attribute("labels", kpathdict["labels"])
-    kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
+    if two_d:
+        kpath, kpathdict = constr2dpath(
+            result["explicit_kpoints"].get_kpoints(),
+            **result["explicit_kpoints"].attributes
+        )
+        kpoints = orm.KpointsData()
+        kpoints.set_kpoints(kpath)
+        kpoints.set_attribute("labels", kpathdict["labels"])
+        kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
+    else:
+        kpoints = result["explicit_kpoints"]
 
     return kpoints
 
@@ -130,7 +133,7 @@ def submit_workchain(
         raise SystemExit("Cannot get force_constants from Node {}.".format(q2r))
 
     structure = read_structure(structure_file)
-    kpoints = gen_kpoints(structure, distance, two_d=system_2d)
+    kpoints = gen_kpoints(structure, orm.Float(distance), two_d=system_2d)
 
     matdyn_calculation_parameters = {
         "matdyn": {
@@ -160,6 +163,7 @@ def submit_workchain(
     add_to_group(workchain, group_name)
     print_help(workchain)
     write_pk_to_file(workchain, None, "matdyn")
+
     return workchain.pk
 
 
