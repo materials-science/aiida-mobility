@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Workchain to automatically compute a band structure for a given structure using Quantum ESPRESSO pw.x.
 This is a copy of the one included in aiida_quantumespresso, the diff is that this one does not do relax calculation."""
+from aiida_mobility.utils import input_pw_parameters_helper
 from aiida import orm
 from aiida.common import AttributeDict
 from aiida.engine import WorkChain, ToContext
@@ -139,7 +140,8 @@ class PwBandStructureWorkChain(WorkChain):
                         'failed to retrieve the cutoff or dual factor for {}'.format(kind))
                     return self.exit_codes.ERROR_INVALID_INPUT_UNRECOGNIZED_KIND
 
-        parameters = {
+        prepare_for_parameters = self.ctx.protocol
+        prepare_for_parameters.update({
             'CONTROL': {
                 'restart_mode': 'from_scratch',
                 'tstress': self.ctx.protocol['tstress'],
@@ -155,13 +157,16 @@ class PwBandStructureWorkChain(WorkChain):
             'ELECTRONS': {
                 'conv_thr': self.ctx.protocol['convergence_threshold_per_atom'] * len(self.inputs.structure.sites),
             }
-        }
-        if 'smearing' in self.ctx.protocol:
-            parameters['SYSTEM']['smearing'] = self.ctx.protocol['smearing']
-        if 'degauss' in self.ctx.protocol:
-            parameters['SYSTEM']['degauss'] = self.ctx.protocol['degauss']
-        if 'occupations' in self.ctx.protocol:
-            parameters['SYSTEM']['occupations'] = self.ctx.protocol['occupations']
+        })
+        # if 'smearing' in self.ctx.protocol:
+        #     parameters['SYSTEM']['smearing'] = self.ctx.protocol['smearing']
+        # if 'degauss' in self.ctx.protocol:
+        #     parameters['SYSTEM']['degauss'] = self.ctx.protocol['degauss']
+        # if 'occupations' in self.ctx.protocol:
+        #     parameters['SYSTEM']['occupations'] = self.ctx.protocol['occupations']
+        parameters = input_pw_parameters_helper(
+            "scf", prepare_for_parameters
+        )
 
         self.ctx.parameters = orm.Dict(dict=parameters)
 
@@ -209,6 +214,8 @@ class PwBandStructureWorkChain(WorkChain):
                 'meta_convergence': orm.Bool(self.ctx.protocol['meta_convergence']),
                 'volume_convergence': orm.Float(self.ctx.protocol['volume_convergence']),
             }
+            parameters = inputs["base"]["pw"]["parameters"].get_dict()
+            parameters.setdefault("CELL", {})
             return inputs
 
         inputs = AttributeDict({

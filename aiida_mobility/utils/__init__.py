@@ -118,6 +118,8 @@ def input_pw_parameters_helper(mode, inputs):
         "occupations",
         "assume_isolated",
         "vdw_corr",
+        "lspinorb",
+        "noncolin",
     ]
     _electron = [
         "conv_thr",
@@ -127,6 +129,7 @@ def input_pw_parameters_helper(mode, inputs):
         "electron_maxstep",
         "scf_must_converge",
         "diago_full_acc",
+        "diagonalization",
     ]
     _ions = ["trust_radius_min"]
     _cell = ["press", "press_conv_thr", "cell_dofree"]
@@ -135,17 +138,23 @@ def input_pw_parameters_helper(mode, inputs):
     ele = {}
     ions = {}
     cell = {}
-    for key in inputs.keys():
+    flat_dict = {}
+    for (key, val) in inputs.items():
+        if  key in ["CONTROL", "SYSTEM", "ELECTRONS", "CELL", "IONS"] and isinstance(val, dict):
+            flat_dict.update(val)
+        else:
+            flat_dict[key] = val
+    for (key, val) in flat_dict.items():
         if key in _control:
-            con[key] = inputs[key]
+            con[key] = val
         elif key in _system:
-            sys[key] = inputs[key]
+            sys[key] = val
         elif key in _electron:
-            ele[key] = inputs[key]
+            ele[key] = val
         elif key in _ions:
-            ions[key] = inputs[key]
+            ions[key] = val
         elif key in _cell and (mode == "vc-relax" or mode == "vc-md"):
-            cell[key] = inputs[key]
+            cell[key] = val
         # else:
         #     raise SystemError('Error: Invalid Input Parameters In input_helper ', key)
     parameters = {}
@@ -155,7 +164,9 @@ def input_pw_parameters_helper(mode, inputs):
         parameters["SYSTEM"] = sys
     if ele:
         parameters["ELECTRONS"] = ele
-    if cell:
+    if ions:
+        parameters["IONS"] = ions
+    if cell or (mode == "vc-relax" or mode == "vc-md"):
         parameters["CELL"] = cell
 
     return parameters

@@ -141,7 +141,7 @@ def plot_bands_json(wannier, pw_bands):
     w_y = []
 
     # set the limits
-    ymin, ymax = fermi_energy - 10.0, fermi_energy + 10.0
+    ymin, ymax = fermi_energy - 15.0, fermi_energy + 15.0
     ymin = max(w_bands.min(), ymin) - 1
     ymax = min(w_bands.max(), ymax) + 1
     ax.set_ylim([ymin, ymax])
@@ -221,12 +221,18 @@ def export_bands(wannier, pw_bands, plot_bands):
         "wannier_bands.agr", overwrite=True
     )
     wannier.outputs.wannier90_interpolated_bands.export(
+        "wannier_bands.gnu", "gnuplot", overwrite=True
+    )
+    wannier.outputs.wannier90_interpolated_bands.export(
         "wannier_bands.json", overwrite=True
     )
     wannier.outputs.wannier90_interpolated_bands.export(
         "wannier_bands.png", "mpl_png", overwrite=True
     )
     pw_bands.outputs.band_structure.export("pw_bands.agr", overwrite=True)
+    pw_bands.outputs.band_structure.export(
+        "pw_bands.gnu", "gnuplot", overwrite=True
+    )
     pw_bands.outputs.band_structure.export("pw_bands.json", overwrite=True)
     pw_bands.outputs.band_structure.export(
         "pw_bands.png", "mpl_png", overwrite=True

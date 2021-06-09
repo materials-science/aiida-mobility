@@ -17,6 +17,7 @@ str_pw = "qe-6.5-pw"
 str_pw2wan = "pw2wannier90"
 str_projwfc = "projwfc"
 str_wan = "wannier-3.1"
+str_opengrid = "qe-git-opengrid@localhost"
 
 group_name = "scdm_workflow"
 
@@ -25,10 +26,10 @@ def check_codes():
     # will raise NotExistent error
     try:
         codes = dict(
-            pw_code=orm.Code.get_from_string(str_pw),
-            pw2wannier90_code=orm.Code.get_from_string(str_pw2wan),
-            projwfc_code=orm.Code.get_from_string(str_projwfc),
-            wannier90_code=orm.Code.get_from_string(str_wan),
+            pw=orm.Code.get_from_string(str_pw),
+            pw2wannier90=orm.Code.get_from_string(str_pw2wan),
+            projwfc=orm.Code.get_from_string(str_projwfc),
+            wannier90=orm.Code.get_from_string(str_wan),
         )
     except NotExistent as e:
         print(e)
@@ -36,6 +37,11 @@ def check_codes():
             "Please modify the code labels in this script according to your machine"
         )
         exit(1)
+    # optional code
+    try:
+        codes["opengrid"] = orm.Code.get_from_string(str_opengrid)
+    except NotExistent:
+        pass
     return codes
 
 
@@ -53,13 +59,13 @@ def parse_arugments():
     parser.add_argument(
         "-p",
         "--parameters",
-        help="available scf parameters protocols are {`fast`, `default` and `accurate`}_{``, `gaussian`, `fixed`}",
+        help="available scf parameters protocols are {`fast`, `default` and `accurate`}_{``, `gaussian`}",
         default="default",
     )
     parser.add_argument(
         "--protocol",
         help="available protocols are 'theos-ht-1.0' and 'ms-1.0'",
-        default="theos-ht-1.0",
+        default="ms-1.0",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
@@ -114,6 +120,18 @@ def parse_arugments():
     parser.add_argument(
         "--write-u-matrices",
         help="Group name that the calculations will be added to.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--soc",
+        default=False,
+        help="spin_orbit_coupling",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--run-dft",
+        default=False,
+        help="Whether to run compare_dft_bands.",
         action="store_true",
     )
     parser.add_argument(
@@ -182,7 +200,8 @@ def submit_workchain(
     do_disentanglement,
     do_mlwf,
     write_u_matrices,
-    run_relax,
+    soc,
+    run_dft,
     group_name,
     daemon,
     system_2d,
@@ -199,15 +218,6 @@ def submit_workchain(
         structure = structure_file
     else:
         structure = read_structure(structure_file)
-
-    controls = {
-        "only_valence": orm.Bool(only_valence),
-        "retrieve_hamiltonian": orm.Bool(retrieve_hamiltonian),
-        "plot_wannier_functions": orm.Bool(plot_wannier_functions),
-        "do_disentanglement": orm.Bool(do_disentanglement),
-        "do_mlwf": orm.Bool(do_mlwf),
-        "write_u_matrices": orm.Bool(write_u_matrices),
-    }
 
     if only_valence:
         print(
@@ -268,15 +278,9 @@ def submit_workchain(
         recommended_cutoffs = {"cutoff": cutoffs[0], "dual": cutoffs[1]}
 
     wannier90_workchain_parameters = {
-        "code": {
-            "pw": codes["pw_code"],
-            "pw2wannier90": codes["pw2wannier90_code"],
-            "projwfc": codes["projwfc_code"],
-            "wannier90": codes["wannier90_code"],
-        },
-        "protocol": orm.Dict(dict={"name": protocol, "modifiers": modifiers}),
+        "codes": codes,
         "structure": structure,
-        "controls": controls,
+        "protocol": orm.Dict(dict={"name": protocol, "modifiers": modifiers}),
         "options": orm.Dict(
             dict={
                 "resources": {
@@ -289,6 +293,21 @@ def submit_workchain(
         ),
         "system_2d": orm.Bool(system_2d),
     }
+
+    controls = {
+        "only_valence": orm.Bool(only_valence),
+        "retrieve_hamiltonian": orm.Bool(retrieve_hamiltonian),
+        "plot_wannier_functions": orm.Bool(plot_wannier_functions),
+        "do_disentanglement": orm.Bool(do_disentanglement),
+        "do_mlwf": orm.Bool(do_mlwf),
+        "write_u_matrices": orm.Bool(write_u_matrices),
+        # optional
+        "use_opengrid": orm.Bool(False),
+        "compare_dft_bands": orm.Bool(run_dft),
+        "spin_orbit_coupling": orm.Bool(soc),
+    }
+
+    wannier90_workchain_parameters.update(controls)
 
     if pseudo_family is not None:
         wannier90_workchain_parameters["pseudo_family"] = orm.Str(pseudo_family)
@@ -306,8 +325,6 @@ def submit_workchain(
             raise SystemExit(
                 f"failed to create a KpointsData mesh out of {kpoints_mesh}\n{exception}"
             )
-    if run_relax:
-        wannier90_workchain_parameters["should_run_relax"] = orm.Bool(run_relax)
 
     if daemon is not None:
         workchain = submit(
@@ -349,7 +366,8 @@ if __name__ == "__main__":
         args.do_disentanglement,
         args.do_mlwf,
         args.write_u_matrices,
-        args.run_relax,
+        args.soc,
+        args.run_dft,
         args.group_name,
         args.daemon,
         args.system_2d,
