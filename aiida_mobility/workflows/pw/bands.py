@@ -231,7 +231,7 @@ class PwBandsWorkChain(ProtocolMixin, WorkChain):
         result = seekpath_structure_analysis(
             self.ctx.current_structure, **inputs
         )
-        self.ctx.current_structure = result["primitive_structure"]
+
         self.ctx.bands_kpoints = result["explicit_kpoints"]
 
         self.out("primitive_structure", result["primitive_structure"])

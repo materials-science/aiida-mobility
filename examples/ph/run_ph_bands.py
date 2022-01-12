@@ -10,8 +10,8 @@ from aiida_mobility.utils import (
     read_structure,
     write_pk_to_file,
 )
-from aiida_mobility.workflows.matdyn.matdyn_restart import (
-    MatdynRestartWorkChain,
+from aiida_mobility.workflows.ph.bands import (
+    PhBandsWorkChain,
 )
 
 from aiida import orm
@@ -72,6 +72,12 @@ def parse_arugments():
         help="Whether to run relax before scf.",
         action="store_true",
     )
+    parser.add_argument(
+        "--vc-relax",
+        default=False,
+        help="Whether to run vc-relax before scf.",
+        action="store_true",
+    )
     # ph parameters
     parser.add_argument(
         "--tr2_ph",
@@ -118,8 +124,8 @@ def parse_arugments():
     parser.add_argument(
         "--walltime",
         type=int,
-        help="the max wall time(hours) of calculation. default is 24 hours.",
-        default=24,
+        help="the max wall time(seconds) of calculation. default is 24 hours.",
+        default=3600 * 24,
     )
     # q2r parameters
     parser.add_argument(
@@ -138,8 +144,8 @@ def parse_arugments():
     parser.add_argument(
         "--matdyn-distance",
         type=float,
-        help="kpoint distance to get kpoints, default is 0.01",
-        default=0.01,
+        help="kpoint distance to get kpoints, default is kpoints_distance_for_bands from protocol",
+        default=None,
     )
     parser.add_argument(
         "-N", "--num-machines", type=int, help="number of machines", default=1
@@ -192,6 +198,7 @@ def submit_workchain(
     cutoffs,
     system_2d,
     run_relax,
+    vc_relax,
     tr2_ph,
     check_imaginary_frequencies,
     frequency_threshold,
@@ -240,6 +247,7 @@ def submit_workchain(
             )
 
     if run_relax:
+        relax_mode = "vc-relax" if vc_relax else "relax"
         relax_parameters = {
             "base": get_pw_common_inputs(
                 structure,
@@ -251,10 +259,10 @@ def submit_workchain(
                 system_2d,
                 num_machines,
                 num_mpiprocs_per_machine,
-                mode="vc-relax",
+                mode=relax_mode,
                 queue_name=queue,
             ),
-            "relaxation_scheme": orm.Str("vc-relax"),
+            "relaxation_scheme": orm.Str(relax_mode),
             "meta_convergence": orm.Bool(protocol["meta_convergence"]),
             # "max_meta_convergence_iterations": orm.Int(10),
             "volume_convergence": orm.Float(protocol["volume_convergence"]),
@@ -348,12 +356,16 @@ def submit_workchain(
         },
     }
     workchain_parameters["matdyn"] = {"matdyn": matdyn_calculation_parameters}
-    workchain_parameters["matdyn_distance"] = orm.Float(matdyn_distance)
+    workchain_parameters["matdyn_distance"] = orm.Float(
+        matdyn_distance
+        if matdyn_distance is not None
+        else protocol.get("kpoints_distance_for_bands", 0.01)
+    )
 
     if daemon is not None:
-        workchain = submit(MatdynRestartWorkChain, **workchain_parameters)
+        workchain = submit(PhBandsWorkChain, **workchain_parameters)
     else:
-        workchain = run_get_pk(MatdynRestartWorkChain, **workchain_parameters)
+        workchain = run_get_pk(PhBandsWorkChain, **workchain_parameters)
 
     add_to_group(workchain, group_name)
     print_help(workchain, structure)
@@ -376,6 +388,7 @@ if __name__ == "__main__":
         args.cutoffs,
         args.system_2d,
         args.run_relax,
+        args.vc_relax,
         args.tr2_ph,
         args.check_imaginary_frequencies,
         args.frequency_threshold,

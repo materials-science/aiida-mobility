@@ -14,9 +14,6 @@ from aiida.engine import (
 )
 from aiida.plugins import CalculationFactory, GroupFactory
 
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import (
-    create_kpoints_from_distance,
-)
 from aiida_quantumespresso.common.types import ElectronicType, SpinType
 from aiida_quantumespresso.utils.defaults.calculation import pw as qe_defaults
 from aiida_quantumespresso.utils.mapping import (
@@ -36,6 +33,8 @@ from aiida_quantumespresso.utils.resources import (
 )
 
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
+
+from aiida_mobility.utils import create_kpoints
 
 PwCalculation = CalculationFactory("quantumespresso.pw")
 SsspFamily = GroupFactory("pseudo.family.sssp")
@@ -316,23 +315,16 @@ class PwBaseWorkChain(ProtocolMixin, BaseRestartWorkChain):
         try:
             kpoints = self.inputs.kpoints
         except AttributeError:
-            inputs = {
-                "structure": self.inputs.pw.structure,
-                "distance": self.inputs.kpoints_distance,
-                "force_parity": self.inputs.get(
-                    "kpoints_force_parity", orm.Bool(False)
-                ),
-                "metadata": {"call_link_label": "create_kpoints_from_distance"},
-            }
-            kpoints = create_kpoints_from_distance(
-                **inputs
-            )  # pylint: disable=unexpected-keyword-arg
-
-            if self.ctx.system_2d:
-                kpoints = kpoints.clone()
-                mesh = kpoints.get_kpoints_mesh()
-                mesh[0][2] = 1
-                kpoints.set_kpoints_mesh(mesh[0])
+            # MODIFIED
+            force_parity = self.inputs.get(
+                "kpoints_force_parity", orm.Bool(False)
+            ).value
+            kpoints = create_kpoints(
+                self.inputs.pw.structure,
+                self.inputs.kpoints_distance,
+                self.ctx.system_2d,
+                force_parity=force_parity,
+            )
 
         self.ctx.inputs.kpoints = kpoints
 

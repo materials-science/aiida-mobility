@@ -1,6 +1,6 @@
 {
     "python.pythonPath": "/home/ias/miniconda3/envs/aiida/bin/python",
-    "ai-docstring.ServerEndpoint": "717c3667042f.ngrok.io",
+    "ai-docstring.ServerEndpoint": "172.31.220.82:33920",
     "[markdown]": {
         "editor.wordWrap": "on",
         "editor.quickSuggestions": true,

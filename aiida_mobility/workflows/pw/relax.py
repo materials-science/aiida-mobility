@@ -93,6 +93,10 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
                 cls.run_relax,
                 cls.inspect_relax,
             ),
+            if_(cls.should_run_final_relax)(
+                cls.run_relax,
+                cls.inspect_relax
+            ),
             if_(cls.should_run_final_scf)(
                 cls.run_final_scf,
                 cls.inspect_final_scf,
@@ -187,7 +191,6 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
 
     def setup(self):
         """Input validation and context setup."""
-        self.ctx.system_2d = self.inputs.system_2d.value
         self.ctx.current_number_of_bands = None
         self.ctx.current_structure = self.inputs.structure
         self.ctx.current_cell_volume = None
@@ -287,6 +290,21 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
             < self.inputs.max_meta_convergence_iterations.value
         )
 
+    def should_run_final_relax(self):
+        """
+        if mode of last calculation is not `relax`, restart once more to set mode in `relax`.
+        """
+        if (
+            self.ctx.relax_inputs.pw.parameters["CONTROL"]["calculation"]
+            != "relax"
+        ):
+            self.ctx.relax_inputs.pw.parameters["CONTROL"][
+                "calculation"
+            ] = "relax"
+            self.ctx.relax_inputs.pw.parameters.pop("CELL")
+            return True
+        return False
+
     def should_run_final_scf(self):
         """Return whether after successful relaxation a final scf calculation should be run.
 
@@ -312,8 +330,7 @@ class PwRelaxWorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = f"iteration_{self.ctx.iteration:02d}"
 
         inputs = prepare_process_inputs(PwBaseWorkChain, inputs)
-        if self.ctx.system_2d:
-            inputs["system_2d"] = self.ctx.system_2d
+        inputs["system_2d"] = self.inputs.system_2d
         running = self.submit(PwBaseWorkChain, **inputs)
 
         self.report(f"launching PwBaseWorkChain<{running.pk}>")

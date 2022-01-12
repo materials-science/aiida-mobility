@@ -9,9 +9,6 @@ from aiida_mobility.utils import (
 )
 from aiida import orm
 from aiida_mobility.workflows.ph.base import PhBaseWorkChain
-from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import (
-    create_kpoints_from_distance,
-)
 from aiida.engine import submit, run_get_pk
 from aiida.orm import load_node
 

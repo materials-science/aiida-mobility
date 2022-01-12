@@ -1,9 +1,5 @@
 #!/usr/bin/env runaiida
 import argparse
-from examples.matdyn.run_matdyn_restart import (
-    get_protocol,
-    get_pw_common_inputs,
-)
 from aiida.engine.launch import submit, run_get_pk
 from aiida.common.extendeddicts import AttributeDict
 from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
@@ -13,6 +9,8 @@ from aiida_mobility.utils import (
     print_help,
     read_structure,
     write_pk_to_file,
+    get_protocol,
+    get_pw_common_inputs,
 )
 from aiida_mobility.workflows.matdyn.matdyn_workflow import MatdynWorkChain
 

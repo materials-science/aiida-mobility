@@ -6,6 +6,7 @@ from aiida.engine import submit
 from aiida.common.exceptions import NotExistent
 from aiida_mobility.workflows.wannier.bands import Wannier90BandsWorkChain
 from aiida_mobility.utils import (
+    StoreDictKeyPair,
     add_to_group,
     print_help,
     write_pk_to_file,
@@ -57,15 +58,23 @@ def parse_arugments():
         help="path to an input Structure(xsf,cif,poscar) file",
     )
     parser.add_argument(
-        "-p",
-        "--parameters",
-        help="available scf parameters protocols are {`fast`, `default` and `accurate`}_{``, `gaussian`}",
-        default="default",
-    )
-    parser.add_argument(
         "--protocol",
         help="available protocols are 'theos-ht-1.0' and 'ms-1.0'",
         default="ms-1.0",
+    )
+    parser.add_argument(
+        "--parameters-set",
+        help="available scf parameters sets of protocols are {`fast`, `default` and `accurate`}_{``, `gaussian`}",
+        default="default",
+    )
+    parser.add_argument(
+        "-p",
+        "--parameters",
+        nargs="+",
+        action=StoreDictKeyPair,
+        default=None,
+        help="Override parameters in protocol by specifying the key and value of parameter. e.g. <ecutwfc=80>...",
+        metavar="KEY1=VAL1 KEY2=VAL2...",
     )
     group.add_argument("--pseudos", help="pseudos json data of structures")
     group.add_argument("--pseudo-family", help="pseudo family name")
@@ -87,6 +96,11 @@ def parse_arugments():
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
+    )
+    parser.add_argument(
+        "--use-primitive-structure",
+        default=False,
+        action="store_true",
     )
     parser.add_argument(
         "-v",
@@ -134,12 +148,12 @@ def parse_arugments():
         help="Whether to run compare_dft_bands.",
         action="store_true",
     )
-    parser.add_argument(
-        "--run-relax",
-        default=False,
-        help="Whether to run relax before scf.",
-        action="store_true",
-    )
+    # parser.add_argument(
+    #     "--run-relax",
+    #     default=False,
+    #     help="Whether to run relax before scf.",
+    #     action="store_true",
+    # )
     parser.add_argument(
         "-N", "--num_machines", type=int, help="number of machines", default=1
     )
@@ -163,6 +177,11 @@ def parse_arugments():
         type=str,
         help="Add this task to Group",
         default="scdm_workflow",
+    )
+    parser.add_argument(
+        "--queue",
+        help="set the queue if using pbs.",
+        default=None,
     )
     args = parser.parse_args()
     if args.cutoffs is not None and args.pseudos is not None:
@@ -191,6 +210,7 @@ def submit_workchain(
     num_machines,
     num_mpiprocs_per_machine,
     protocol,
+    parameters_set,
     parameters,
     pseudo_family,
     pseudos,
@@ -205,8 +225,10 @@ def submit_workchain(
     group_name,
     daemon,
     system_2d,
+    use_primitive_structure,
     cutoffs,
     kpoints_mesh,
+    queue,
 ):
     codes = check_codes()
 
@@ -232,7 +254,7 @@ def submit_workchain(
             )
         )
 
-    modifiers = {"parameters": parameters}
+    modifiers = {"parameters": parameters_set}
     recommended_cutoffs = None
     if pseudos is not None:
         from aiida_quantumespresso.utils.protocols.pw import (
@@ -281,6 +303,7 @@ def submit_workchain(
         "codes": codes,
         "structure": structure,
         "protocol": orm.Dict(dict={"name": protocol, "modifiers": modifiers}),
+        "extra_parameters": orm.Dict(dict=parameters),
         "options": orm.Dict(
             dict={
                 "resources": {
@@ -289,19 +312,21 @@ def submit_workchain(
                 },
                 "max_wallclock_seconds": 3600 * 5,
                 "withmpi": True,
+                "queue_name": queue,
             }
         ),
         "system_2d": orm.Bool(system_2d),
+        "use_primitive_structure": orm.Bool(use_primitive_structure),
     }
 
     controls = {
         "only_valence": orm.Bool(only_valence),
         "retrieve_hamiltonian": orm.Bool(retrieve_hamiltonian),
         "plot_wannier_functions": orm.Bool(plot_wannier_functions),
-        "do_disentanglement": orm.Bool(do_disentanglement),
-        "do_mlwf": orm.Bool(do_mlwf),
-        "write_u_matrices": orm.Bool(write_u_matrices),
+        "disentanglement": orm.Bool(do_disentanglement),
+        "maximal_localisation": orm.Bool(do_mlwf),
         # optional
+        "write_u_matrices": orm.Bool(write_u_matrices),
         "use_opengrid": orm.Bool(False),
         "compare_dft_bands": orm.Bool(run_dft),
         "spin_orbit_coupling": orm.Bool(soc),
@@ -357,6 +382,7 @@ if __name__ == "__main__":
         args.num_machines,
         args.num_mpiprocs_per_machine,
         args.protocol,
+        args.parameters_set,
         args.parameters,
         args.pseudo_family,
         args.pseudos,
@@ -371,6 +397,8 @@ if __name__ == "__main__":
         args.group_name,
         args.daemon,
         args.system_2d,
+        args.use_primitive_structure,
         args.cutoffs,
         args.kpoints_mesh,
+        args.queue,
     )

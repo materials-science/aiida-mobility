@@ -3,6 +3,62 @@
 """
 import argparse
 from aiida import orm
+import numpy as np
+
+
+def distEclud(x, y):
+    return np.sqrt(np.sum((x - y) ** 2))
+
+
+# TODO: compare_bands_data
+def compare_bands_data(
+    dft_bands, wan_bands, emin=None, emax=None, fermi_energy=None
+):
+    if dft_bands.shape[0] == wan_bands.shape[0]:
+        inner_dft_bands = range(0, dft_bands.shape[1])
+        inner_wan_bands = range(0, wan_bands.shape[1])
+
+        if all(e is not None for e in (emin, emax)):
+            index = 0
+            inner_dft_bands = []
+            inner_wan_bands = []
+            while index < dft_bands.shape[1] and index < wan_bands.shape[1]:
+                dband = dft_bands[:, index]
+                wband = wan_bands[:, index]
+                if np.max(dband) > emin and np.min(dband) < emax:
+                    inner_dft_bands.append(index)
+                if np.max(wband) > emin and np.min(wband) < emax:
+                    inner_wan_bands.append(index)
+            while index < dft_bands.shape[1]:
+                dband = dft_bands[:, index]
+                if np.max(dband) > emin and np.min(dband) < emax:
+                    inner_dft_bands.append(index)
+            while index < wan_bands.shape[1]:
+                wband = wan_bands[:, index]
+                if np.max(wband) > emin and np.min(wband) < emax:
+                    inner_wan_bands.append(index)
+
+        diff_num = len(inner_dft_bands) - len(inner_wan_bands)
+        if diff_num == 0:
+            diff = distEclud(inner_wan_bands, inner_dft_bands)
+        elif diff_num > 0:
+            diff = [
+                distEclud(
+                    inner_wan_bands,
+                    inner_dft_bands[:, disp : disp + len(inner_wan_bands)],
+                )
+                for disp in range(0, diff_num)
+            ]
+        elif diff_num < 0:
+            diff = [
+                distEclud(
+                    inner_wan_bands[:, disp : disp + len(inner_dft_bands)],
+                    inner_dft_bands,
+                )
+                for disp in range(0, abs(diff_num))
+            ]
+        # min_diff = np.min(diff, axis=0)
+        return diff
 
 
 def required_length(nmin, nmax):

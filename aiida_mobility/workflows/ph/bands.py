@@ -32,30 +32,24 @@ def validate_inputs(inputs, ctx=None):  # pylint: disable=unused-argument
             scf = load_node(inputs["scf_node"].value)
             remote = scf.outputs.remote_folder
         except Exception:
-            return (
-                MatdynRestartWorkChain.exit_codes.ERROR_INVALID_SCF_NODE.message
-            )
+            return PhBandsWorkChain.exit_codes.ERROR_INVALID_SCF_NODE.message
     if "ph_node" in inputs:
         try:
             ph = load_node(inputs["ph_node"].value)
             remote = ph.outputs.remote_folder
         except Exception:
-            return (
-                MatdynRestartWorkChain.exit_codes.ERROR_INVALID_PH_NODE.message
-            )
+            return PhBandsWorkChain.exit_codes.ERROR_INVALID_PH_NODE.message
     if "q2r_node" in inputs:
         try:
             q2r = load_node(inputs["q2r_node"].value)
             remote = q2r.outputs.remote_folder
         except Exception:
-            return (
-                MatdynRestartWorkChain.exit_codes.ERROR_INVALID_Q2R_NODE.message
-            )
+            return PhBandsWorkChain.exit_codes.ERROR_INVALID_Q2R_NODE.message
     if "qpoints" not in inputs and "qpoints_distance" not in inputs:
-        return MatdynRestartWorkChain.exit_codes.ERROR_INVALID_QPOINTS.message
+        return PhBandsWorkChain.exit_codes.ERROR_INVALID_QPOINTS.message
 
 
-class MatdynRestartWorkChain(WorkChain):
+class PhBandsWorkChain(WorkChain):
     @classmethod
     def define(cls, spec):
         super().define(spec)
@@ -155,6 +149,7 @@ class MatdynRestartWorkChain(WorkChain):
                     cls.run_relax,
                     cls.inspect_relax,
                 ),
+                cls.run_seekpath,
                 if_(cls.should_run_scf)(
                     cls.run_scf,
                     cls.inspect_scf,
@@ -167,9 +162,6 @@ class MatdynRestartWorkChain(WorkChain):
                     if_(cls.should_run_q2r)(
                         cls.run_q2r,
                         cls.inspect_q2r,
-                    ),
-                    if_(cls.should_run_seekpath)(
-                        cls.run_seekpath,
                     ),
                     cls.run_matdyn,
                     cls.inspect_matdyn,
@@ -251,7 +243,6 @@ class MatdynRestartWorkChain(WorkChain):
         self.ctx.iteration = 0
         self.ctx.no_imaginary_frequencies = False
         self.ctx.current_structure = self.inputs.structure
-        self.ctx.matdyn_distance = self.inputs.get("matdyn_distance")
         if "relax" in self.inputs:
             self.ctx.relax_inputs = AttributeDict(
                 self.exposed_inputs(PwRelaxWorkChain, namespace="relax")
@@ -310,6 +301,9 @@ class MatdynRestartWorkChain(WorkChain):
             self.ctx.conv_thr = inputs.base.pw.parameters.get_attribute(
                 "ELECTRONS"
             ).get("conv_thr", 1.0e-6)
+            self.ctx.cutoff = inputs.base.pw.parameters.get_attribute(
+                "SYSTEM"
+            ).get("ecutwfc", 80)
         else:
             inputs.base.kpoints_distance = self.ctx.kpoints_distance
             inputs.base.pw.parameters["CONTROL"][
@@ -321,6 +315,7 @@ class MatdynRestartWorkChain(WorkChain):
             inputs.base.pw.parameters["ELECTRONS"][
                 "conv_thr"
             ] = self.ctx.conv_thr
+            inputs.base.pw.parameters["SYSTEM"]["ecutwfc"] = self.ctx.cutoff
 
         inputs.metadata.call_link_label = "relax"
         inputs.structure = self.ctx.current_structure
@@ -353,6 +348,55 @@ class MatdynRestartWorkChain(WorkChain):
         self.ctx.current_structure = workchain.outputs.output_structure
         self.ctx.current_folder = workchain.outputs.remote_folder
         self.out("output_relax_structure", self.ctx.current_structure)
+
+    def run_seekpath(self):
+        """Run the structure through SeeKpath to get the primitive and normalized structure."""
+        structure_formula = self.ctx.current_structure.get_formula()
+        self.report(
+            f"running seekpath to get primitive structure for: {structure_formula}"
+        )
+        kpoints_distance_for_bands = self.inputs.get(
+            "matdyn_distance",
+            orm.Float(0.01),
+        )
+        args = {
+            "structure": self.ctx.current_structure,
+            "reference_distance": kpoints_distance_for_bands,
+            "metadata": {"call_link_label": "seekpath_structure_analysis"},
+        }
+        result = seekpath_structure_analysis(**args)
+
+        self.ctx.current_structure = result["primitive_structure"]
+        # ADD BY PY
+        ########################################################################
+        # seek path will transform the cells of some 2d structures
+        # # TODO: use 2d path
+        # if (
+        #     "kpoints" not in self.inputs
+        #     and self.inputs.system_2d.value == False
+        # ):
+        #     self.ctx.current_structure = result["primitive_structure"]
+        # else:
+        #     self.ctx.current_structure = self.inputs.structure
+        ########################################################################
+
+        # save explicit_kpoints_path for DFT bands
+        # self.ctx.explicit_kpoints_path = result["explicit_kpoints"]
+        if self.inputs.system_2d.value:
+            kpath, kpathdict = constr2dpath(
+                result["explicit_kpoints"].get_kpoints(),
+                **result["explicit_kpoints"].attributes,
+            )
+            kpoints = KpointsData()
+            kpoints.set_kpoints(kpath)
+            kpoints.set_attribute("labels", kpathdict["labels"])
+            kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
+            self.ctx.explicit_kpoints = kpoints
+        else:
+            self.ctx.explicit_kpoints = result["explicit_kpoints"]
+
+        self.out("primitive_structure", result["primitive_structure"])
+        self.out("seekpath_parameters", result["parameters"])
 
     def should_run_scf(self):
         """If the 'scf_node' or 'ph_node' input was specified, we skip scf calc."""
@@ -492,9 +536,10 @@ class MatdynRestartWorkChain(WorkChain):
             )
             if workchain.exit_status == 301:
                 self.ctx.iteration += 1
+                current_qpoint = workchain.outputs.current_qpoint
                 self.report(
-                    "The {} times to restart from relax because of imaginary frequencies in ph outputs.".format(
-                        self.ctx.iteration
+                    "The {} times to restart from relax because of imaginary frequencies in ph outputs at point {}.".format(
+                        self.ctx.iteration, current_qpoint
                     )
                 )
                 # increase conv_thr if restarted
@@ -502,6 +547,7 @@ class MatdynRestartWorkChain(WorkChain):
                 self.ctx.conv_thr *= 0.01
                 self.ctx.etot_conv_thr *= 0.01
                 self.ctx.forc_conv_thr *= 0.01
+                self.ctx.cutoff += 20
                 # increase tr2_ph if restarted
                 self.ctx.tr2_ph *= 0.01
                 self.report(
@@ -565,39 +611,6 @@ class MatdynRestartWorkChain(WorkChain):
 
         self.ctx.current_folder = workchain.outputs.remote_folder
         self.ctx.force_constants = workchain.outputs.force_constants
-
-    def should_run_seekpath(self):
-        """Seekpath should only be run if the `matdyn_kpoints` input is not specified."""
-        return "matdyn_kpoints" not in self.inputs
-
-    def run_seekpath(self):
-        """Run the structure through SeeKpath to get the normalized structure and path along high-symmetry k-points .
-        This is only called if the `kpoints` input was not specified.
-        """
-        inputs = {
-            "reference_distance": self.ctx.matdyn_distance,
-            "metadata": {"call_link_label": "seekpath"},
-        }
-        result = seekpath_structure_analysis(
-            self.ctx.current_structure, **inputs
-        )
-        self.ctx.current_structure = result["primitive_structure"]
-
-        if self.inputs.system_2d.value:
-            kpath, kpathdict = constr2dpath(
-                result["explicit_kpoints"].get_kpoints(),
-                **result["explicit_kpoints"].attributes
-            )
-            kpoints = KpointsData()
-            kpoints.set_kpoints(kpath)
-            kpoints.set_attribute("labels", kpathdict["labels"])
-            kpoints.set_attribute("label_numbers", kpathdict["label_numbers"])
-            self.ctx.explicit_kpoints = kpoints
-        else:
-            self.ctx.explicit_kpoints = result["explicit_kpoints"]
-
-        self.out("primitive_structure", result["primitive_structure"])
-        self.out("seekpath_parameters", result["parameters"])
 
     def run_matdyn(self):
         inputs = AttributeDict(

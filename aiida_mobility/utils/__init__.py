@@ -1,13 +1,33 @@
+import argparse
 from aiida import orm
+from aiida.common import exceptions
 from aiida.common.exceptions import NotExistent
 from aiida.common.extendeddicts import AttributeDict
 from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance import (
     create_kpoints_from_distance,
 )
 from aiida_quantumespresso.utils.pseudopotential import get_pseudos_from_dict
+import numpy as np
 from aiida_mobility.utils.protocols.pw import ProtocolManager
 from ase.io import read as aseread
 
+
+def get_calc_from_folder(folder):
+    parent_calcs = folder.get_incoming(
+        node_class=orm.CalcJobNode
+    ).all()
+
+    if not parent_calcs:
+        raise exceptions.NotExistent(
+            f"folder<{folder.pk}> has no parent calculation"
+        )
+    elif len(parent_calcs) > 1:
+        raise exceptions.UniquenessError(
+            f"folder<{folder.pk}> has multiple parent calculations"
+        )
+
+    parent_calc = parent_calcs[0].node
+    return parent_calc
 
 def read_structure(structure_file, store=False):
     structure = orm.StructureData(ase=aseread(structure_file))
@@ -64,19 +84,25 @@ def write_pk_to_file(workchain, structure=None, ext=""):
         f.write("verdi process report {}".format(workchain.pk))
 
 
-def create_kpoints(structure, distance, system_2d):
+def create_kpoints(structure, distance, system_2d=False, force_parity=False):
     inputs = {
         "structure": structure,
         "distance": orm.Float(distance),
-        "force_parity": orm.Bool(False),
+        "force_parity": orm.Bool(force_parity),
         "metadata": {"call_link_label": "create_kpoints_from_distance"},
     }
     kpoints = create_kpoints_from_distance(**inputs)
 
+    cells = structure.cell_lengths/max(structure.cell_lengths)
+    cindex = tuple(np.where(np.isclose(cells, 1)==True)[0])
+
     if system_2d:
         kpoints = kpoints.clone()
         mesh = kpoints.get_kpoints_mesh()
-        mesh[0][2] = 1
+        if len(cindex) == 1:
+            mesh[0][cindex[0]] = 1
+        else:
+            mesh[0][2] = 1
         kpoints.set_kpoints_mesh(mesh[0])
     return kpoints
 
@@ -100,8 +126,8 @@ def constr2dpath(kpath3d, **kpath3ddict):
     return kpath, kpathdict
 
 
-def input_pw_parameters_helper(mode, inputs):
-    # TODO: Add ALL Parameters
+def input_pw_parameters_helper(mode, inputs, version='6.5'):
+    # TODO: Add ALL Parameters for all versions
     _control = [
         "restart_mode",
         "tstress",
@@ -118,8 +144,10 @@ def input_pw_parameters_helper(mode, inputs):
         "occupations",
         "assume_isolated",
         "vdw_corr",
+        "input_dft",
         "lspinorb",
         "noncolin",
+        "ibrav",
     ]
     _electron = [
         "conv_thr",
@@ -140,9 +168,9 @@ def input_pw_parameters_helper(mode, inputs):
     cell = {}
     flat_dict = {}
     for (key, val) in inputs.items():
-        if  key in ["CONTROL", "SYSTEM", "ELECTRONS", "CELL", "IONS"] and isinstance(val, dict):
+        if key in ["CONTROL", "SYSTEM", "ELECTRONS", "CELL", "IONS"] and isinstance(val, dict):
             flat_dict.update(val)
-        else:
+        elif key not in flat_dict.keys(): # avoid overrideing
             flat_dict[key] = val
     for (key, val) in flat_dict.items():
         if key in _control:
@@ -172,7 +200,7 @@ def input_pw_parameters_helper(mode, inputs):
     return parameters
 
 
-def get_protocol(structure, scf_parameters_name, protocol, pseudos):
+def get_protocol(structure, scf_parameters_name, protocol, pseudos=None):
     # get custom pseudo
     modifiers = {"parameters": scf_parameters_name}
     recommended_cutoffs = None
@@ -224,14 +252,14 @@ def get_protocol(structure, scf_parameters_name, protocol, pseudos):
 
 
 def get_metadata_options(
-    num_machines, num_mpiprocs_per_machine, walltime=5, queue_name=None
+    num_machines, num_mpiprocs_per_machine, walltime=5*3600, queue_name=None
 ):
     options = {
         "resources": {
             "num_machines": num_machines,
             "num_mpiprocs_per_machine": num_mpiprocs_per_machine,
         },
-        "max_wallclock_seconds": 3600 * walltime,
+        "max_wallclock_seconds": walltime,
         "withmpi": True,
     }
     if queue_name is not None:
@@ -250,8 +278,9 @@ def get_pw_common_inputs(
     num_machines,
     num_mpiprocs_per_machine,
     mode="scf",
-    walltime=5,
+    walltime=5*3600,
     queue_name=None,
+    kpoints=None
 ):
     # get cutoff
     ecutwfc = []
@@ -290,42 +319,11 @@ def get_pw_common_inputs(
     prepare_for_parameters["conv_thr"] = (
         protocol["convergence_threshold_per_atom"] * number_of_atoms
     )
-    # if "smearing" in protocol:
-    #     prepare_for_parameters["smearing"] = protocol["smearing"]
-    # if "degauss" in protocol:
-    #     prepare_for_parameters["degauss"] = protocol["degauss"]
-    # if "occupations" in protocol:
-    #     prepare_for_parameters["occupations"] = protocol["occupations"]
     pw_parameters = input_pw_parameters_helper(mode, prepare_for_parameters)
-    # pw_parameters = {
-    #     "CONTROL": {
-    #         "restart_mode": "from_scratch",
-    #         "tstress": protocol["tstress"],
-    #         "tprnfor": protocol["tprnfor"],
-    #         "etot_conv_thr": protocol["etot_conv_thr"],
-    #         "forc_conv_thr": protocol["forc_conv_thr"],
-    #     },
-    #     "SYSTEM": {
-    #         "ecutwfc": max(ecutwfc),
-    #         "ecutrho": max(ecutrho),
-    #     },
-    #     "ELECTRONS": {
-    #         "conv_thr": protocol["convergence_threshold_per_atom"]
-    #         * number_of_atoms,
-    #     },
-    # }
-
-    # if "smearing" in protocol:
-    #     pw_parameters["SYSTEM"]["smearing"] = protocol["smearing"]
-    # if "degauss" in protocol:
-    #     pw_parameters["SYSTEM"]["degauss"] = protocol["degauss"]
-    # if "occupations" in protocol:
-    #     pw_parameters["SYSTEM"]["occupations"] = protocol["occupations"]
-
     inputs = AttributeDict(
         {
             "pw": {
-                "code": orm.load_code(pw_code),
+                "code": pw_code if isinstance(pw_code, orm.Code) else orm.load_code(pw_code),
                 "parameters": orm.Dict(dict=pw_parameters),
                 "metadata": {},
             },
@@ -347,6 +345,9 @@ def get_pw_common_inputs(
 
     inputs.kpoints_distance = orm.Float(protocol["kpoints_mesh_density"])
 
+    if kpoints is not None:
+        inputs["kpoints"] = kpoints
+
     inputs.pw.metadata.options = get_metadata_options(
         num_machines,
         num_mpiprocs_per_machine,
@@ -354,5 +355,27 @@ def get_pw_common_inputs(
         queue_name=queue_name,
     )
 
-    # return scf_parameters
     return inputs
+
+
+class StoreDictKeyPair(argparse.Action):
+     def __init__(self, option_strings, dest, nargs=None, **kwargs):
+         self._nargs = nargs
+         super(StoreDictKeyPair, self).__init__(option_strings, dest, nargs=nargs, **kwargs)
+     def __call__(self, parser, namespace, values, option_string=None):
+         my_dict = {}
+         for kv in values:
+             k,v = kv.split("=")
+             if v in ["True", "true"]:
+                my_dict[k] = True
+             elif v in ["False", "false"]:
+                my_dict[k] = False
+             else:
+                try:
+                    my_dict[k] = int(v)
+                except ValueError:
+                    try:
+                        my_dict[k] = float(v)
+                    except ValueError:
+                        my_dict[k] = v
+         setattr(namespace, self.dest, my_dict)

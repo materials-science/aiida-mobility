@@ -124,8 +124,8 @@ class MatdynWorkChain(WorkChain):
         )
         spec.input(
             "system_2d",
-            valid_type=orm.Bool,
-            default=lambda: orm.Bool(False),
+            valid_type=Bool,
+            default=lambda: Bool(False),
             help="Set the mesh to [x,x,1]",
         )
         spec.inputs.validator = validate_inputs

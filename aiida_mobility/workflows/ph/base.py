@@ -52,6 +52,7 @@ class PhBaseWorkChain(BaseRestartWorkChain):
             cls.results,
         )
         spec.expose_outputs(PwCalculation, exclude=('retrieved_folder',))
+        spec.output("current_qpoint", required=False)
         spec.exit_code(204, 'ERROR_INVALID_INPUT_RESOURCES_UNDERSPECIFIED',
                        message='The `metadata.options` did not specify both `resources.num_machines` and `max_wallclock_seconds`.')
         spec.exit_code(300, 'ERROR_UNRECOVERABLE_FAILURE',
@@ -180,13 +181,7 @@ class PhBaseWorkChain(BaseRestartWorkChain):
     def handle_imaginary_frequencies(self, node):
         """Handle calculations with imaginary frequencies in dynamical_matrix_1.
         Currently checking the first point only, adding a counter to check more. Not availble to a recover calculation."""
-        # for value in $(seq 2 1 14)
-        #     do
-        #     cp ph.in ph_$value.in
-        #     sed -i  "s|.*start_q.*|    start_q = $value |g" ph_$value.in
-        #     sed -i  "s|.*last_q.*|    last_q = $value |g" ph_$value.in
-        #     mpirun -n 72 ph.x < ph_$value.in > ph_$value.out
-        # done
+
         def start_next(action, separated=False):
             if self.ctx.current_qpoint >= self.ctx.max_qpoint or (
                 self.inputs.separated_qpoints.value is False
@@ -276,6 +271,7 @@ class PhBaseWorkChain(BaseRestartWorkChain):
                                     self.ctx.current_qpoint
                                 ),
                             )
+                            self.out("current_qpoint", self.ctx.current_qpoint)
                             return ProcessHandlerReport(
                                 True,
                                 self.exit_codes.ERROR_IMAGINARY_FREQUENCIES,
@@ -303,6 +299,8 @@ class PhBaseWorkChain(BaseRestartWorkChain):
     def handle_out_of_walltime(self, node):
         """Handle `ERROR_OUT_OF_WALLTIME` exit code: calculation shut down neatly and we can simply restart."""
         self.ctx.restart_calc = node
+        # avoid tranfering too many files
+        self.ctx.inputs.settings["PARENT_FOLDER_SYMLINK"] = True
         self.report_error_handled(
             node, "simply restart from the last calculation"
         )

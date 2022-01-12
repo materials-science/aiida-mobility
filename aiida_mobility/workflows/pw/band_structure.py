@@ -205,15 +205,15 @@ class PwBandStructureWorkChain(WorkChain):
 
             return inputs
 
-        def get_relax_inputs(self):
+        def get_relax_inputs():
             """get_relax_inputs Get relaxation inputs .
             """
-            inputs = {
+            inputs = AttributeDict({
                 'base': get_common_inputs(),
                 'relaxation_scheme': orm.Str('vc-relax'),
                 'meta_convergence': orm.Bool(self.ctx.protocol['meta_convergence']),
                 'volume_convergence': orm.Float(self.ctx.protocol['volume_convergence']),
-            }
+            })
             parameters = inputs["base"]["pw"]["parameters"].get_dict()
             parameters.setdefault("CELL", {})
             return inputs
@@ -233,6 +233,7 @@ class PwBandStructureWorkChain(WorkChain):
         else:
             inputs.scf.kpoints_distance = orm.Float(
                 self.ctx.protocol['kpoints_mesh_density'])
+        # TODO: 2D materials
         inputs.bands.kpoints_distance = orm.Float(
             self.ctx.protocol['kpoints_distance_for_bands'])
 

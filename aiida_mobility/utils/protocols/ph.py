@@ -55,9 +55,9 @@ _protocol = {
 }
 
 
-def get_ph_protocol_parameters(name="ms-1.0", type=None):
+def get_ph_protocol_parameters(name="ms-1.0", set=None):
     return _protocol[name]["parameters"][
-        _protocol[name]["parameters_default"] if type is None else type
+        _protocol[name]["parameters_default"] if set is None else set
     ]
 
 

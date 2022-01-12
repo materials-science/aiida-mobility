@@ -1,9 +1,8 @@
 #!/usr/bin/env runaiida
-from examples.matdyn.run_matdyn_restart import get_pw_common_inputs
-from examples.matdyn.run_matdyn_workflow import get_protocol
-import os
 from aiida_mobility.utils import (
     add_to_group,
+    get_protocol,
+    get_pw_common_inputs,
     write_pk_to_file,
     print_help,
     read_structure,
@@ -45,6 +44,12 @@ def parse_argugments():
     )
     pseudos_group.add_argument("--pseudo-family", help="pseudo family name")
     parser.add_argument(
+        "--kpoints-mesh",
+        nargs=3,
+        type=int,
+        help="The number of points in the kpoint mesh along each basis vector.",
+    )
+    parser.add_argument(
         "--cutoffs",
         type=float,
         nargs=2,
@@ -56,6 +61,12 @@ def parse_argugments():
         default=False,
         action="store_true",
         help="Set mesh to [x, x, 1]",
+    )
+    parser.add_argument(
+        "--vc-relax",
+        default=False,
+        help="Whether to run vc-relax before scf.",
+        action="store_true",
     )
     parser.add_argument(
         "-N", "--num_machines", type=int, help="number of machines", default=1
@@ -113,6 +124,8 @@ def submit_workchain(
     num_machines,
     num_mpiprocs_per_machine,
     system_2d,
+    vc_relax,
+    kpoints_mesh,
     cutoffs=None,
 ):
     print(
@@ -126,6 +139,7 @@ def submit_workchain(
     )
 
     # Submit the Relax workchain
+    relax_mode = "vc-relax" if vc_relax else "relax"
     relax_workchain_parameters = {
         "structure": structure,
         "base": get_pw_common_inputs(
@@ -138,9 +152,9 @@ def submit_workchain(
             system_2d,
             num_machines,
             num_mpiprocs_per_machine,
-            mode="vc-relax",
+            mode=relax_mode,
         ),
-        "relaxation_scheme": orm.Str("vc-relax"),
+        "relaxation_scheme": orm.Str(relax_mode),
         "meta_convergence": orm.Bool(protocol["meta_convergence"]),
         # "max_meta_convergence_iterations": orm.Int(10),
         "volume_convergence": orm.Float(protocol["volume_convergence"]),
@@ -155,6 +169,16 @@ def submit_workchain(
     relax_workchain_parameters["base"]["pw"]["parameters"] = orm.Dict(
         dict=parameters
     )
+
+    if kpoints_mesh is not None:
+        try:
+            kpoints = orm.KpointsData()
+            kpoints.set_kpoints_mesh(kpoints_mesh)
+            relax_workchain_parameters["base"]["kpoints"] = kpoints
+        except ValueError as exception:
+            raise SystemExit(
+                f"failed to create a KpointsData mesh out of {args.kpoints_mesh}\n{exception}"
+            )
 
     if daemon:
         relax_workchain = submit(PwRelaxWorkChain, **relax_workchain_parameters)
@@ -180,6 +204,8 @@ if __name__ == "__main__":
         args.num_machines,
         args.num_mpiprocs_per_machine,
         args.system_2d,
+        args.vc_relax,
+        args.kpoints_mesh,
         args.cutoffs,
     )
 
